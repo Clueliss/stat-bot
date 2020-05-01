@@ -1,5 +1,5 @@
 [package]
-name = "discord_stats"
+name = "stat-bot"
 version = "0.1.0"
 authors = ["Liss Heidrich <31625940+Clueliss@users.noreply.github.com>"]
 edition = "2018"
