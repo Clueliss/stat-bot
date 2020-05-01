@@ -116,7 +116,7 @@ fn main() {
     {
         let opts: Opts = Opts::parse();
 
-        let mut f = File::open(&opts.outputfile).unwrap();
+        let mut f = File::create(&opts.outputfile).unwrap();
         let mut st = STATS.lock().unwrap();
         let mut fp = OUTPUT_FILE_PATH.lock().unwrap();
 
