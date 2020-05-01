@@ -15,4 +15,4 @@ RUN cargo build --release
 
 RUN cp ./target/release/stat-bot /init
 
-CMD /init
+CMD ["/init", "--file", "/stats.json"]
