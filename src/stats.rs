@@ -82,10 +82,10 @@ impl Stats {
     }
 
     pub fn as_human_readable_string(&self, ctx: &Context) -> String {
-        let mut buf = "Stats:\n".to_string();
+        let mut buf = "Time wasted:\n".to_string();
 
         for (uid, time) in self.online_time.iter() {
-            buf += &format!("  {}: {}\n",
+            buf += &format!("  {}:\n  - {}\n",
                             uid.to_user(ctx).unwrap().name,
                             seconds_to_human_readable(time.as_secs()));
         }
