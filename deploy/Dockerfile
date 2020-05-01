@@ -10,8 +10,7 @@ RUN sh /tmp/rustup.sh -y --default-toolchain=nightly
 
 RUN git clone https://github.com/Clueliss/stat-bot /tmp/stat-bot
 
-RUN cd /tmp/stat-bot
-RUN cargo build --release
+RUN cd /tmp/stat-bot && cargo build --release
 
 RUN cp /tmp/stat-bot/target/release/stat-bot /init
 
