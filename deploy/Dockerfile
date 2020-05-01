@@ -13,6 +13,6 @@ RUN git clone https://github.com/Clueliss/stat-bot /tmp/stat-bot
 RUN cd /tmp/stat-bot
 RUN cargo build --release
 
-RUN cp ./target/release/stat-bot /init
+RUN cp /tmp/stat-bot/target/release/stat-bot /init
 
 CMD ["/init", "--file", "/stats.json"]
