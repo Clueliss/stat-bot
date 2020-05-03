@@ -60,7 +60,7 @@ impl EventHandler for StatBot {
 
     fn ready(&self, ctx: Context, rdy: Ready) {
         let mut st = STATS.lock().unwrap();
-        println!("<6> now online");
+        println!("now online");
         let tlof = rdy.guilds.get(0).unwrap();
 
         let channels: HashMap<ChannelId, GuildChannel> = tlof.id().channels(&ctx).unwrap();
@@ -88,14 +88,15 @@ impl EventHandler for StatBot {
 
         if old.map(|o| o.channel_id) != Some(new.channel_id) {
             match new.channel_id {
+                // id.name == None unreachable
+                Some(id) => if !id.name(&ctx).unwrap().starts_with("AFK") {
+                    st.user_now_online(new.user_id);
+                    println!("User joined: {}", new.user_id.to_user(ctx).unwrap().name);
+                },
                 None => {
                     st.user_now_offline(new.user_id);
                     println!("User left: {}", new.user_id.to_user(&ctx).unwrap().name);
                 },
-                Some(_) => {
-                    st.user_now_online(new.user_id);
-                    println!("User joined: {}", new.user_id.to_user(ctx).unwrap().name);
-                }
             }
         }
     }
@@ -103,12 +104,16 @@ impl EventHandler for StatBot {
 }
 
 
-fn signal_handler(_sig: libc::c_int) {
+fn signal_handler(sig: libc::c_int) {
     let fp = OUTPUT_FILE_PATH.lock().unwrap();
     let mut st = STATS.lock().unwrap();
 
     let mut f = File::create(&*fp).unwrap();
     st.flush_stats(&mut f).unwrap();
+
+    if sig == libc::SIGTERM {
+        std::process::exit(0);
+    }
 }
 
 
