@@ -52,9 +52,11 @@ impl EventHandler for StatBot {
         } else if msg.content == ">>write" {
             let fp = OUTPUT_FILE_PATH.lock().unwrap();
             let mut st = STATS.lock().unwrap();
-            let mut f = File::create(&*fp).unwrap();
 
-            st.flush_stats(&mut f).unwrap();
+            match File::create(&*fp) {
+                Ok(mut f) => st.flush_stats(&mut f).unwrap(),
+                Err(e) => eprintln!("could not write stats: {:?}", e),
+            }
         }
     }
 
@@ -121,13 +123,16 @@ fn main() {
     {
         let opts: Opts = Opts::parse();
 
-        let mut f = File::create(&opts.outputfile).unwrap();
-        let mut st = STATS.lock().unwrap();
+        match File::open(&opts.outputfile) {
+            Ok(mut f) => {
+                let mut st = STATS.lock().unwrap();
+                st.read_stats(&mut f).unwrap();
+            },
+            _ => (),
+        }
+
         let mut fp = OUTPUT_FILE_PATH.lock().unwrap();
-
-
         *fp = opts.outputfile;
-        st.read_stats(&mut f).unwrap();
     }
 
     unsafe {
