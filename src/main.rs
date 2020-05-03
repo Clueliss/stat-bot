@@ -88,18 +88,16 @@ impl EventHandler for StatBot {
     fn voice_state_update(&self, ctx: Context, _: Option<GuildId>, old: Option<VoiceState>, new: VoiceState) {
         let mut st = STATS.lock().unwrap();
 
-        if old.map(|o| o.channel_id) != Some(new.channel_id) {
-            match new.channel_id {
-                // id.name == None unreachable
-                Some(id) => if !id.name(&ctx).unwrap().starts_with("AFK") {
-                    st.user_now_online(new.user_id);
-                    println!("User joined: {}", new.user_id.to_user(ctx).unwrap().name);
-                },
-                _ => {
-                    st.user_now_offline(new.user_id);
-                    println!("User left: {}", new.user_id.to_user(&ctx).unwrap().name);
-                },
-            }
+        match new.channel_id {
+            // id.name == None unreachable
+            Some(id) => if !id.name(&ctx).unwrap().starts_with("AFK") {
+                st.user_now_online(new.user_id);
+                println!("User joined: {}", new.user_id.to_user(ctx).unwrap().name);
+            },
+            _ => {
+                st.user_now_offline(new.user_id);
+                println!("User left: {}", new.user_id.to_user(&ctx).unwrap().name);
+            },
         }
     }
 
