@@ -8,11 +8,11 @@ cd ./stat-bot
 
 cargo build --release
 
-rm /init
+rm /init || true
 cp ./target/release/stat-bot /init
 chmod +x /init
 
-rm /update
+rm /update || true
 cp ./deploy/update.sh /update
 chmod +x /update
 
