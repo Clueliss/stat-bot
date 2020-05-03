@@ -89,7 +89,7 @@ impl Stats {
                 .map(|(uid, time)| (uid.clone(), time.clone()))
                 .collect();
 
-            tmp.sort_by_key(|(_, time)| time.clone());
+            tmp.sort_by(|(_, t1), (_, t2)| t2.cmp(t1));
             tmp
         };
 
