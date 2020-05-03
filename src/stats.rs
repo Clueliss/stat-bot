@@ -84,7 +84,16 @@ impl Stats {
     pub fn as_human_readable_string(&self, ctx: &Context) -> String {
         let mut buf = "Time wasted:\n".to_string();
 
-        for (uid, time) in self.online_time.iter() {
+        let sorted_stats = {
+            let mut tmp: Vec<(UserId, Duration)> = self.online_time.iter()
+                .map(|(uid, time)| (uid.clone(), time.clone()))
+                .collect();
+
+            tmp.sort_by_key(|(_, time)| time.clone());
+            tmp
+        };
+
+        for (uid, time) in sorted_stats {
             buf += &format!("  {}:\n  - {}\n",
                             uid.to_user(ctx).unwrap().name,
                             seconds_to_human_readable(time.as_secs()));
