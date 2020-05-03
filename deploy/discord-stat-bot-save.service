@@ -3,4 +3,4 @@ Description=forces stat_bot to save
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/docker kill --signal="SIGINT" stat_bot
+ExecStart=/usr/bin/docker kill --signal="SIGINT" stat-bot
