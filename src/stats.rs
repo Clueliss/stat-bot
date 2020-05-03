@@ -60,10 +60,7 @@ impl Stats {
 
         let date = Utc::now().format("%Y-%m-%d").to_string();
 
-        match existent.get_mut(&date) {
-            Some(st) => { *st = self.online_time.clone(); },
-            None => { existent.insert(date.clone(), self.online_time.clone()); }
-        }
+        existent.insert(date, self.online_time.clone());
 
         let jmap: BTreeMap<String, BTreeMap<String, X>> = existent.into_iter()
             .map(move |(s, m)| (s, m.into_iter().map(&transform).collect()))
