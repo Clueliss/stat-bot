@@ -17,12 +17,6 @@ fn seconds_to_human_readable(s_total: u64) -> String {
     format!("*{}* ***D***, *{}* ***H***, *{}* ***M***, *{}* ***S***", d, h, m, s)
 }
 
-fn into_json(map: BTreeMap<UserId, Duration>) -> BTreeMap<String, u64> {
-    map.into_iter()
-        .map(|(uid, dur)| (format!("{}", uid), dur.as_secs()))
-        .collect()
-}
-
 
 #[derive(Clone, Default)]
 pub struct Stats {
@@ -35,17 +29,30 @@ impl Stats {
         Self::default()
     }
 
+    pub fn users(&self) -> Vec<UserId> {
+        self.online_time.iter().map(|(uid, _)| uid.clone()).collect()
+    }
+
     pub fn read_stats<F: Read>(&mut self, mut f: F) -> Result<(), std::io::Error> {
         let date = Utc::now().format("%Y-%m-%d").to_string();
-        let mut j: BTreeMap<String, BTreeMap<UserId, u64>> = serde_json::from_reader(&mut f).unwrap_or(Default::default());
+        let mut j: BTreeMap<String, BTreeMap<UserId, u64>> = serde_json::from_reader(&mut f).unwrap_or_default();
 
-        let st_today = j.remove(&date).unwrap_or(Default::default());
+        let st_today = j.remove(&date).unwrap_or_default();
         self.online_time = st_today.into_iter().map(|(uid, t)| (uid, Duration::new(t, 0))).collect();
 
         Ok(())
     }
 
-    pub fn flush_stats<F: Write + Read>(&mut self, mut f: F) -> Result<(), std::io::Error> {
+    pub fn flush_stats<F: Write + Read>(&mut self, f: F) -> Result<(), std::io::Error> {
+        self.flush_stats_map(f, |(uid, time)| (format!("{}", uid), time.as_secs()))
+    }
+
+    pub fn flush_stats_map<F, T, X>(&mut self, mut f: F, transform: T) -> Result<(), std::io::Error>
+    where
+        F: Read + Write,
+        T: Fn((UserId, Duration)) -> (String, X),
+        X: serde::ser::Serialize,
+    {
         self.update_stats();
 
         let mut existent: BTreeMap<String, BTreeMap<UserId, Duration>> = serde_json::from_reader(&mut f)
@@ -58,8 +65,8 @@ impl Stats {
             None => { existent.insert(date.clone(), self.online_time.clone()); }
         }
 
-        let jmap: BTreeMap<String, BTreeMap<String, u64>> = existent.into_iter()
-            .map(|(s, m)| (s, into_json(m)))
+        let jmap: BTreeMap<String, BTreeMap<String, X>> = existent.into_iter()
+            .map(move |(s, m)| (s, m.into_iter().map(&transform).collect()))
             .collect();
 
         serde_json::to_writer(&mut f, &jmap)?;
