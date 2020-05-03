@@ -1,5 +1,5 @@
 [Unit]
-Description=forces stat_bot to save
+Description=forces stat-bot to save
 
 [Service]
 Type=oneshot

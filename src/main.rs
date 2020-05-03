@@ -49,7 +49,7 @@ impl EventHandler for StatBot {
             st.update_stats();
 
             msg.channel_id
-                .send_message(&ctx, |m| m.content(st.as_human_readable_string(&ctx)))
+                .send_message(&ctx, |m| m.content(st.as_human_readable_string()))
                 .unwrap();
         }
     }

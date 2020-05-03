@@ -1,7 +1,6 @@
 use chrono::Utc;
 
 use serenity::model::id::UserId;
-use serenity::prelude::Context;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -98,7 +97,7 @@ impl Stats {
         }
     }
 
-    pub fn as_human_readable_string(&self, ctx: &Context) -> String {
+    pub fn as_human_readable_string(&self) -> String {
         let mut buf = "Time wasted:\n".to_string();
 
         let sorted_stats = {
@@ -112,7 +111,7 @@ impl Stats {
 
         for (uid, time) in sorted_stats {
             buf += &format!("  {}:\n  - {}\n",
-                            uid.to_user(ctx).unwrap().name,
+                            uid.to_user(&self.cache_and_http).unwrap().name,
                             seconds_to_human_readable(time.as_secs()));
         }
 
@@ -138,5 +137,4 @@ impl Stats {
             self.online_since.insert(uid, Instant::now());
         }
     }
-
 }
