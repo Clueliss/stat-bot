@@ -112,10 +112,12 @@ impl EventHandler for StatBot {
 
 fn signal_handler(sig: libc::c_int) {
     let outdir = OUTPUT_DIR.lock().unwrap();
-    let mut st = STATS.lock().unwrap();
 
-    let mut f = File::create(&format!("{}/{}", &*outdir, STAT_FILE_NAME)).unwrap();
-    st.flush_stats(&mut f).unwrap();
+    {
+        let mut st = STATS.lock().unwrap();
+        let mut f = File::create(&format!("{}/{}", &*outdir, STAT_FILE_NAME)).unwrap();
+        st.flush_stats(&mut f).unwrap();
+    }
 
     {
         let trans = generate_id_translations();
