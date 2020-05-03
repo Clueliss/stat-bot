@@ -2,9 +2,8 @@
 
 set -e
 
-cd /tmp
-git clone https://github.com/Clueliss/stat-bot
-cd ./stat-bot
+cd /tmp/stat-bot
+git pull
 
 cargo build --release
 
