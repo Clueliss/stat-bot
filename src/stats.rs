@@ -6,6 +6,7 @@ use serenity::prelude::Context;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::time::{Instant, Duration};
+use serenity::http::Http;
 
 
 fn seconds_to_human_readable(s_total: u64) -> String {
@@ -31,6 +32,12 @@ impl Stats {
 
     pub fn users(&self) -> Vec<UserId> {
         self.online_time.iter().map(|(uid, _)| uid.clone()).collect()
+    }
+
+    pub fn generate_translations(&self, ctx: &Http) -> BTreeMap<UserId, String> {
+        self.online_time.iter()
+            .map(|(uid, _)| (uid.clone(), uid.to_user(ctx).unwrap().name))
+            .collect()
     }
 
     pub fn read_stats<F: Read>(&mut self, mut f: F) -> Result<(), std::io::Error> {

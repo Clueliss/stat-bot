@@ -13,14 +13,14 @@ use serenity::client::Client;
 use serenity::model::channel::{Message, GuildChannel, ChannelType};
 use serenity::model::gateway::Ready;
 use serenity::model::guild::Member;
-use serenity::model::id::{GuildId, ChannelId, UserId};
+use serenity::model::id::{GuildId, ChannelId};
 use serenity::model::user::User;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::{EventHandler, Context};
 
 use stats::Stats;
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Mutex;
 use serenity::http::Http;
@@ -40,15 +40,6 @@ lazy_static! {
 struct Opts {
     #[clap(short = "o", long = "outdir")]
     outputdir: String
-}
-
-
-pub fn generate_id_translations() -> BTreeMap<UserId, String> {
-    let st = STATS.lock().unwrap();
-    let tok = BOT_TOKEN.lock().unwrap();
-    let ctx = Http::new_with_token(&*tok);
-
-    st.users().into_iter().map(|uid| (uid, uid.to_user(&ctx).unwrap().name)).collect()
 }
 
 struct StatBot;
@@ -112,15 +103,16 @@ impl EventHandler for StatBot {
 
 fn signal_handler(sig: libc::c_int) {
     let outdir = OUTPUT_DIR.lock().unwrap();
+    let mut st = STATS.lock().unwrap();
+    let tok = BOT_TOKEN.lock().unwrap();
+
+    let mut f = File::create(&format!("{}/{}", &*outdir, STAT_FILE_NAME)).unwrap();
+    st.flush_stats(&mut f).unwrap();
 
     {
-        let mut st = STATS.lock().unwrap();
-        let mut f = File::create(&format!("{}/{}", &*outdir, STAT_FILE_NAME)).unwrap();
-        st.flush_stats(&mut f).unwrap();
-    }
+        let ctx = Http::new_with_token(&tok);
 
-    {
-        let trans = generate_id_translations();
+        let trans = st.generate_translations(&ctx);
         let mut trans_file = File::create(&format!("{}/{}", &*outdir, TRANS_FILE_NAME)).unwrap();
         serde_json::to_writer(&mut trans_file, &trans).unwrap();
     }
