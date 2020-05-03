@@ -23,7 +23,6 @@ use stats::Stats;
 use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Mutex;
-use serenity::http::Http;
 
 
 static STAT_FILE_NAME: &str = "stat.json";
@@ -32,7 +31,6 @@ static TRANS_FILE_NAME: &str = "trans.json";
 lazy_static! {
     static ref STATS: Mutex<Stats> = Mutex::new(Stats::new());
     static ref OUTPUT_DIR: Mutex<String> = Mutex::new(String::new());
-    static ref BOT_TOKEN: Mutex<String> = Mutex::new(String::new());
 }
 
 
@@ -104,15 +102,12 @@ impl EventHandler for StatBot {
 fn signal_handler(sig: libc::c_int) {
     let outdir = OUTPUT_DIR.lock().unwrap();
     let mut st = STATS.lock().unwrap();
-    let tok = BOT_TOKEN.lock().unwrap();
 
     let mut f = File::create(&format!("{}/{}", &*outdir, STAT_FILE_NAME)).unwrap();
     st.flush_stats(&mut f).unwrap();
 
     {
-        let ctx = Http::new_with_token(&tok);
-
-        let trans = st.generate_translations(&ctx);
+        let trans = st.generate_translations();
         let mut trans_file = File::create(&format!("{}/{}", &*outdir, TRANS_FILE_NAME)).unwrap();
         serde_json::to_writer(&mut trans_file, &trans).unwrap();
     }
@@ -124,20 +119,6 @@ fn signal_handler(sig: libc::c_int) {
 
 
 fn main() {
-    {
-        let opts: Opts = Opts::parse();
-
-        match File::open(&format!("{}/{}", &opts.outputdir, STAT_FILE_NAME)) {
-            Ok(mut f) => {
-                let mut st = STATS.lock().unwrap();
-                st.read_stats(&mut f).unwrap();
-            },
-            _ => (),
-        }
-
-        *OUTPUT_DIR.lock().unwrap() = opts.outputdir;
-    }
-
     unsafe {
         let signal_handler_fn_ptr = signal_handler as *const fn(libc::c_int);
         let sighandler = std::mem::transmute::<*const fn(libc::c_int), libc::sighandler_t>(signal_handler_fn_ptr);
@@ -147,9 +128,22 @@ fn main() {
     }
 
     let tok = std::env::var("STAT_BOT_DISCORD_TOKEN").unwrap();
-    *BOT_TOKEN.lock().unwrap() = tok.clone();
-
     let mut client = Client::new(tok, StatBot).unwrap();
+
+    {
+        let mut st = STATS.lock().unwrap();
+
+        let opts: Opts = Opts::parse();
+
+        match File::open(&format!("{}/{}", &opts.outputdir, STAT_FILE_NAME)) {
+            Ok(mut f) => st.read_stats(&mut f).unwrap(),
+            _ => (),
+        }
+
+        *OUTPUT_DIR.lock().unwrap() = opts.outputdir;
+
+        st.set_cache_and_http(client.cache_and_http.clone());
+    }
 
     client.start().unwrap();
 }

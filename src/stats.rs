@@ -6,7 +6,8 @@ use serenity::prelude::Context;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::time::{Instant, Duration};
-use serenity::http::Http;
+use std::sync::Arc;
+use serenity::CacheAndHttp;
 
 
 fn seconds_to_human_readable(s_total: u64) -> String {
@@ -22,7 +23,8 @@ fn seconds_to_human_readable(s_total: u64) -> String {
 #[derive(Clone, Default)]
 pub struct Stats {
     online_time: BTreeMap<UserId, Duration>,
-    online_since: BTreeMap<UserId, Instant>
+    online_since: BTreeMap<UserId, Instant>,
+    cache_and_http: Arc<CacheAndHttp>,
 }
 
 impl Stats {
@@ -30,13 +32,17 @@ impl Stats {
         Self::default()
     }
 
+    pub fn set_cache_and_http(&mut self, ch: Arc<CacheAndHttp>) {
+        self.cache_and_http = ch;
+    }
+
     pub fn users(&self) -> Vec<UserId> {
         self.online_time.iter().map(|(uid, _)| uid.clone()).collect()
     }
 
-    pub fn generate_translations(&self, ctx: &Http) -> BTreeMap<UserId, String> {
+    pub fn generate_translations(&self) -> BTreeMap<UserId, String> {
         self.online_time.iter()
-            .map(|(uid, _)| (uid.clone(), uid.to_user(ctx).unwrap().name))
+            .map(|(uid, _)| (uid.clone(), uid.to_user(&self.cache_and_http).unwrap().name))
             .collect()
     }
 
