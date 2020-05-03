@@ -10,7 +10,7 @@ RUN dnf install gcc git openssl-devel -y
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > /tmp/rustup.sh
 RUN sh /tmp/rustup.sh -y --default-toolchain=nightly
 
-COPY ./deploy/update.sh /update
+COPY update.sh /update
 RUN chmod +x /update
 
 RUN /update
