@@ -95,7 +95,7 @@ impl EventHandler for StatBot {
                     st.user_now_online(new.user_id);
                     println!("User joined: {}", new.user_id.to_user(ctx).unwrap().name);
                 },
-                None => {
+                _ => {
                     st.user_now_offline(new.user_id);
                     println!("User left: {}", new.user_id.to_user(&ctx).unwrap().name);
                 },
