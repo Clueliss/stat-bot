@@ -11,6 +11,6 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > /tmp/rustup.sh
 RUN sh /tmp/rustup.sh -y --default-toolchain=nightly
 
 RUN cd /tmp && git clone https://github.com/Clueliss/stat-bot
-RUN /update
+RUN sh /tmp/stat-bot/deploy/update.sh
 
 CMD ["/init", "--outdir", "/data"]
