@@ -23,6 +23,7 @@ use stats::Stats;
 use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Mutex;
+use chrono::Utc;
 
 
 static STAT_FILE_NAME: &str = "stat.json";
@@ -56,7 +57,6 @@ impl EventHandler for StatBot {
 
     fn ready(&self, ctx: Context, rdy: Ready) {
         let mut st = STATS.lock().unwrap();
-        println!("now online");
         let tlof = rdy.guilds.get(0).unwrap();
 
         let channels: HashMap<ChannelId, GuildChannel> = tlof.id().channels(&ctx).unwrap();
@@ -77,20 +77,25 @@ impl EventHandler for StatBot {
                 _ => (),
             }
         }
+
+        let date_time = Utc::now().format("%Y-%m-%d_%H:%M:%S");
+        println!("<{}> scan complete, now online", date_time);
     }
 
     fn voice_state_update(&self, ctx: Context, _: Option<GuildId>, old: Option<VoiceState>, new: VoiceState) {
         let mut st = STATS.lock().unwrap();
 
         if old.map(|o| o.channel_id) != Some(new.channel_id) {
+            let date_time = Utc::now().format("%Y-%m-%d_%H:%M:%S");
+
             match new.channel_id {
                 Some(id) if !id.name(&ctx).unwrap().starts_with("AFK") => {
                     st.user_now_online(new.user_id);
-                    println!("User joined: {}", new.user_id.to_user(ctx).unwrap().name);
+                    println!("<{}> User joined: {}", date_time, new.user_id.to_user(ctx).unwrap().name);
                 },
                 _ => {
                     st.user_now_offline(new.user_id);
-                    println!("User left: {}", new.user_id.to_user(&ctx).unwrap().name);
+                    println!("<{}> User left: {}", date_time, new.user_id.to_user(&ctx).unwrap().name);
                 },
             }
         }
