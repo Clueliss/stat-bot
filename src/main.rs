@@ -116,24 +116,26 @@ impl StatBot {
 
 impl EventHandler for StatBot {
     fn message(&self, ctx: Context, msg: Message) {
-        let mut prefix = self.prefix.lock().unwrap();
+        if !msg.author.bot {
+            let mut prefix = self.prefix.lock().unwrap();
 
-        if msg.content.starts_with(prefix.as_str()) {
-            let commandline = &msg.content[prefix.len()..].split(" ")
-                .collect::<Vec<&str>>();
+            if msg.content.starts_with(prefix.as_str()) {
+                let commandline = &msg.content[prefix.len()..].split(" ")
+                    .collect::<Vec<&str>>();
 
-            if commandline.len() == 0 {
-                msg.channel_id
-                    .send_message(&ctx, |m| m.content("Error: expected command"))
-                    .unwrap();
-            } else {
-                let cmd = commandline[0];
-                let args = &commandline[1..];
+                if commandline.len() == 0 {
+                    msg.channel_id
+                        .send_message(&ctx, |m| m.content("Error: expected command"))
+                        .unwrap();
+                } else {
+                    let cmd = commandline[0];
+                    let args = &commandline[1..];
 
-                match cmd {
-                    "stats" => self.stats_subroutine(&ctx, &msg, &args[..]),
-                    "settings" => self.settings_subroutine(&mut prefix, &ctx, &msg, &args[..]),
-                    _ => (),
+                    match cmd {
+                        "stats" => self.stats_subroutine(&ctx, &msg, &args[..]),
+                        "settings" => self.settings_subroutine(&mut prefix, &ctx, &msg, &args[..]),
+                        _ => (),
+                    }
                 }
             }
         }
