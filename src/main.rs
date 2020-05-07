@@ -20,14 +20,19 @@ use serenity::prelude::{EventHandler, Context};
 
 use stats::Stats;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::fs::File;
 use std::sync::Mutex;
 use chrono::Utc;
+use serde_json::Value;
+use std::io::{Write, Read};
 
 
 static STAT_FILE_NAME: &str = "stat.json";
 static TRANS_FILE_NAME: &str = "trans.json";
+static SETTINGS_FILE_NAME: &str = "settings.json";
+static DEFAULT_PREFIX: &str = ">>";
+
 
 lazy_static! {
     static ref STATS: Mutex<Stats> = Mutex::new(Stats::new());
@@ -41,17 +46,96 @@ struct Opts {
     outputdir: String
 }
 
-struct StatBot;
+struct StatBot {
+    prefix: Mutex<String>
+}
 
-impl EventHandler for StatBot {
-    fn message(&self, ctx: Context, msg: Message) {
-        if msg.content == ">>stats" {
+impl StatBot {
+    fn load_conf<R: Read>(f: R) -> String {
+        let settings: BTreeMap<String, Value> = serde_json::from_reader(f).unwrap_or_default();
+
+        match settings.get("prefix") {
+            Some(Value::String(p)) => p.clone(),
+            _ => DEFAULT_PREFIX.to_string(),
+        }
+    }
+
+    fn store_conf<W: Write>(f: W, prefix: &str) {
+        let conf = {
+            let mut buf = BTreeMap::new();
+            buf.insert("prefix", prefix);
+
+            buf
+        };
+
+        serde_json::to_writer(f, &conf).unwrap();
+    }
+
+    fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
+        if args.len() > 0 {
+            msg.channel_id
+                .send_message(&ctx, |m| m.content("Error: stats does not expect args"))
+                .unwrap();
+        } else{
             let mut st = STATS.lock().unwrap();
             st.update_stats();
 
             msg.channel_id
                 .send_message(&ctx, |m| m.content(st.as_human_readable_string()))
                 .unwrap();
+        }
+    }
+
+    fn settings_subroutine(&self, prefix: &mut String, ctx: &Context, msg: &Message, args: &[&str]) {
+        if args.len() == 0 {
+            msg.channel_id
+                .send_message(&ctx, |m| m.content(format!("{}settings prefix", prefix)))
+                .unwrap();
+        } else {
+            if args[0] == "prefix" {
+                if args.len() == 2 {
+                    *prefix = args[1].to_string();
+
+                    let outdir = OUTPUT_DIR.lock().unwrap();
+
+                    let f = File::create(format!("{}/{}", outdir, SETTINGS_FILE_NAME)).unwrap();
+                    Self::store_conf(f, prefix);
+                } else {
+                    msg.channel_id
+                        .send_message(&ctx, |m| m.content("Error: settings prefix requires 1 arg"))
+                        .unwrap();
+                }
+            } else {
+                msg.channel_id
+                    .send_message(&ctx, |m| m.content("Error: invalid setting"))
+                    .unwrap();
+            }
+        }
+    }
+}
+
+impl EventHandler for StatBot {
+    fn message(&self, ctx: Context, msg: Message) {
+        let mut prefix = self.prefix.lock().unwrap();
+
+        if msg.content.starts_with(prefix.as_str()) {
+            let commandline = &msg.content[prefix.len()..].split(" ")
+                .collect::<Vec<&str>>();
+
+            if commandline.len() == 0 {
+                msg.channel_id
+                    .send_message(&ctx, |m| m.content("Error: expected command"))
+                    .unwrap();
+            } else {
+                let cmd = commandline[0];
+                let args = &commandline[1..];
+
+                match cmd {
+                    "stats" => self.stats_subroutine(&ctx, &msg, &args[..]),
+                    "settings" => self.settings_subroutine(&mut prefix, &ctx, &msg, &args[..]),
+                    _ => (),
+                }
+            }
         }
     }
 
@@ -124,6 +208,8 @@ fn signal_handler(sig: libc::c_int) {
 
 
 fn main() {
+    let opts: Opts = Opts::parse();
+
     unsafe {
         let signal_handler_fn_ptr = signal_handler as *const fn(libc::c_int);
         let sighandler = std::mem::transmute::<*const fn(libc::c_int), libc::sighandler_t>(signal_handler_fn_ptr);
@@ -132,13 +218,20 @@ fn main() {
         libc::signal(libc::SIGINT, sighandler);
     }
 
+    let prefix = {
+        let outdir = OUTPUT_DIR.lock().unwrap();
+
+        match File::open(format!("{}/{}", outdir, SETTINGS_FILE_NAME)) {
+            Ok(f) => StatBot::load_conf(f),
+            _ => DEFAULT_PREFIX.to_string(),
+        }
+    };
+
     let tok = std::env::var("STAT_BOT_DISCORD_TOKEN").unwrap();
-    let mut client = Client::new(tok, StatBot).unwrap();
+    let mut client = Client::new(tok, StatBot{ prefix: Mutex::new(prefix) }).unwrap();
 
     {
         let mut st = STATS.lock().unwrap();
-
-        let opts: Opts = Opts::parse();
 
         match File::open(&format!("{}/{}", &opts.outputdir, STAT_FILE_NAME)) {
             Ok(mut f) => st.read_stats(&mut f).unwrap(),

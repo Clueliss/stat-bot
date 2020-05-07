@@ -55,30 +55,26 @@ impl Stats {
         Ok(())
     }
 
-    pub fn flush_stats<F: Write + Read>(&mut self, f: F) -> Result<(), std::io::Error> {
-        self.flush_stats_map(f, |(uid, time)| (format!("{}", uid), time.as_secs()))
-    }
 
-    pub fn flush_stats_map<F, T, X>(&mut self, mut f: F, transform: T) -> Result<(), std::io::Error>
+    pub fn flush_stats<F>(&mut self, mut f: F) -> Result<(), std::io::Error>
     where
         F: Read + Write,
-        T: Fn((UserId, Duration)) -> (String, X),
-        X: serde::ser::Serialize,
     {
         self.update_stats();
 
-        let mut existent: BTreeMap<String, BTreeMap<UserId, Duration>> = serde_json::from_reader(&mut f)
-            .unwrap_or(Default::default());
-
         let date = Utc::now().format("%Y-%m-%d").to_string();
 
-        existent.insert(date, self.online_time.clone());
+        let mut existent: BTreeMap<String, BTreeMap<String, u64>> = serde_json::from_reader(&mut f)
+            .unwrap_or(Default::default());
 
-        let jmap: BTreeMap<String, BTreeMap<String, X>> = existent.into_iter()
-            .map(move |(s, m)| (s, m.into_iter().map(&transform).collect()))
+        let new: BTreeMap<String, u64> = self.online_time.clone()
+            .into_iter()
+            .map(|(uid, dur)| (format!("{}", uid), dur.as_secs()))
             .collect();
 
-        serde_json::to_writer(&mut f, &jmap)?;
+        existent.insert(date, new);
+
+        serde_json::to_writer(&mut f, &existent)?;
 
         Ok(())
     }
