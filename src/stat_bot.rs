@@ -21,6 +21,14 @@ pub static STAT_FILE_NAME: &str = "stat.json";
 pub static TRANS_FILE_NAME: &str = "trans.json";
 pub static SETTINGS_FILE_NAME: &str = "settings.json";
 
+static SETTINGS_CHOICES: [&str; 1] = [
+    "prefix"
+];
+
+static SETTINGS_CHOICES_DESCR: [&str; 1] = [
+    ":exclamation: prefix"
+];
+
 
 lazy_static! {
     pub static ref STATS: Mutex<Stats> = Mutex::new(Stats::new());
@@ -87,12 +95,39 @@ impl StatBot {
     }
 
     fn settings_subroutine(&self, settings: &mut Settings, ctx: &Context, msg: &Message, args: &[&str]) {
+
+        let reply_sucess = |mes: &str| {
+            msg.channel_id
+                .send_message(&ctx, |mb| mb.content(format!(":white_check_mark: Success: {}", msg)))
+                .unwrap();
+        };
+
+        let reply_err = |mes: &str| {
+            msg.channel_id
+                .send_message(&ctx, |mb| mb.content(format!(":x: Error: {}", msg)))
+                .unwrap();
+        };
+
         if args.len() == 0 {
             msg.channel_id
-                .send_message(&ctx, |m| m.content(format!("{}settings prefix", settings.prefix)))
-                .unwrap();
+                .send_message(&ctx, |m| {
+                    m.embed(|e| {
+
+                        e.title("StatBot Settings")
+                            .description(format!("Use the command format {}settings <option>", settings.prefix));
+
+                        for i in 0..SETTINGS_CHOICES.len() {
+                            e.field(
+                                SETTINGS_CHOICES_DESCR[i],
+                                format!("{}settings {}", settings.prefix, SETTINGS_CHOICES[i]), true);
+                        }
+
+                        e
+                    })
+                }).unwrap();
         } else {
-            if args[0] == "prefix" {
+            // prefix
+            if args[0] == SETTINGS_CHOICES[0] {
                 if args.len() == 2 {
                     settings.prefix = args[1].to_string();
 
@@ -103,19 +138,12 @@ impl StatBot {
                         settings.store(f).unwrap();
                     }
 
-                    msg.channel_id
-                        .send_message(&ctx, |m| m.content(format!("sucess: prefix is now '{}'", settings.prefix)))
-                        .unwrap();
-
+                    reply_sucess(&format!("prefix is now '{}'", settings.prefix));
                 } else {
-                    msg.channel_id
-                        .send_message(&ctx, |m| m.content("Error: settings prefix requires 1 arg"))
-                        .unwrap();
+                    reply_err("required exactly 1 arg");
                 }
             } else {
-                msg.channel_id
-                    .send_message(&ctx, |m| m.content("Error: invalid setting"))
-                    .unwrap();
+                reply_err("invalid setting");
             }
         }
     }
