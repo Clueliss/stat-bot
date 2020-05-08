@@ -98,13 +98,13 @@ impl StatBot {
 
         let reply_sucess = |mes: &str| {
             msg.channel_id
-                .send_message(&ctx, |mb| mb.content(format!(":white_check_mark: Success: {}", msg)))
+                .send_message(&ctx, |mb| mb.content(format!(":white_check_mark: Success: {}", mes)))
                 .unwrap();
         };
 
         let reply_err = |mes: &str| {
             msg.channel_id
-                .send_message(&ctx, |mb| mb.content(format!(":x: Error: {}", msg)))
+                .send_message(&ctx, |mb| mb.content(format!(":x: Error: {}", mes)))
                 .unwrap();
         };
 
