@@ -119,7 +119,7 @@ impl StatBot {
                         for i in 0..SETTINGS_CHOICES.len() {
                             e.field(
                                 SETTINGS_CHOICES_DESCR[i],
-                                format!("{}settings {}", settings.prefix, SETTINGS_CHOICES[i]), true);
+                                format!("```{}settings {}```", settings.prefix, SETTINGS_CHOICES[i]), true);
                         }
 
                         e
