@@ -1,17 +1,18 @@
 use serenity::model::channel::{Message, GuildChannel, ChannelType};
 use serenity::model::gateway::Ready;
 use serenity::model::guild::Member;
-use serenity::model::id::{GuildId, ChannelId};
+use serenity::model::id::{GuildId, ChannelId, UserId};
 use serenity::model::user::User;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::{EventHandler, Context};
 
-use crate::stats::Stats;
+use crate::stats::*;
 
 use std::collections::{HashMap, BTreeMap};
 use std::fs::File;
 use std::sync::Mutex;
 use chrono::Utc;
+use std::time::Duration;
 use serde_json::Value;
 use std::io::{Write, Read};
 
@@ -33,6 +34,16 @@ static SETTINGS_CHOICES_DESCR: [&str; 1] = [
 lazy_static! {
     pub static ref STATS: Mutex<Stats> = Mutex::new(Stats::new());
     pub static ref OUTPUT_DIR: Mutex<String> = Mutex::new(String::new());
+}
+
+
+fn seconds_to_human_readable(s_total: u64) -> String {
+    let d = s_total/86400;
+    let h = (s_total - d * 86400)/3600;
+    let m = ((s_total - d * 86400) - h * 3600)/60;
+    let s = ((s_total - d * 86400) - h * 3600) - (m * 60);
+
+    format!("*{}* ***D***, *{}* ***H***, *{}* ***M***, *{}* ***S***", d, h, m, s)
 }
 
 
@@ -80,17 +91,37 @@ impl StatBot {
     }
 
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
+
         if args.len() > 0 {
             msg.channel_id
-                .send_message(&ctx, |m| m.content("Error: stats does not expect args"))
+                .send_message(&ctx, |mb| mb.content(":x: Error: stats does not expect args"))
                 .unwrap();
-        } else{
+        } else {
             let mut st = STATS.lock().unwrap();
             st.update_stats();
 
             msg.channel_id
-                .send_message(&ctx, |m| m.content(st.as_human_readable_string()))
-                .unwrap();
+                .send_message(&ctx, |m| m.embed(|e| {
+
+                    e.title("Time Wasted");
+
+                    let sorted: Vec<(UserId, Duration)> = {
+                        let mut buf: Vec<(UserId, Duration)> = st.stats_iter()
+                            .map(|(uid, t)| (uid.clone(), t.clone()))
+                            .collect();
+
+                        buf.sort_by(|(_, t1), (_, t2)| t2.cmp(t1));
+                        buf
+                    };
+
+                    for (uid, time) in sorted {
+                        let user = uid.to_user(ctx).unwrap();
+
+                        e.field(user.name, seconds_to_human_readable(time.as_secs()), false);
+                    }
+
+                    e
+                })).unwrap();
         }
     }
 

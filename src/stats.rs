@@ -9,16 +9,6 @@ use std::sync::Arc;
 use serenity::CacheAndHttp;
 
 
-fn seconds_to_human_readable(s_total: u64) -> String {
-    let d = s_total/86400;
-    let h = (s_total - d * 86400)/3600;
-    let m = ((s_total - d * 86400) - h * 3600)/60;
-    let s = ((s_total - d * 86400) - h * 3600) - (m * 60);
-
-    format!("*{}* ***D***, *{}* ***H***, *{}* ***M***, *{}* ***S***", d, h, m, s)
-}
-
-
 #[derive(Clone, Default)]
 pub struct Stats {
     online_time: BTreeMap<UserId, Duration>,
@@ -37,6 +27,10 @@ impl Stats {
 
     pub fn users(&self) -> Vec<UserId> {
         self.online_time.iter().map(|(uid, _)| uid.clone()).collect()
+    }
+
+    pub fn stats_iter(&self) -> std::collections::btree_map::Iter<UserId, Duration> {
+        self.online_time.iter()
     }
 
     pub fn generate_translations(&self) -> BTreeMap<UserId, String> {
@@ -93,28 +87,7 @@ impl Stats {
         }
     }
 
-    pub fn as_human_readable_string(&self) -> String {
-        let mut buf = "Time wasted:\n".to_string();
-
-        let sorted_stats = {
-            let mut tmp: Vec<(UserId, Duration)> = self.online_time.iter()
-                .map(|(uid, time)| (uid.clone(), time.clone()))
-                .collect();
-
-            tmp.sort_by(|(_, t1), (_, t2)| t2.cmp(t1));
-            tmp
-        };
-
-        for (uid, time) in sorted_stats {
-            buf += &format!("  {}:\n  - {}\n",
-                            uid.to_user(&self.cache_and_http).unwrap().name,
-                            seconds_to_human_readable(time.as_secs()));
-        }
-
-        buf
-    }
-
-   pub fn user_now_offline(&mut self, uid: UserId) -> bool {
+    pub fn user_now_offline(&mut self, uid: UserId) -> bool {
         if self.online_since.contains_key(&uid) {
             let since = self.online_since.remove(&uid).unwrap();
 
