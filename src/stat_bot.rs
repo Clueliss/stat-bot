@@ -114,12 +114,12 @@ impl StatBot {
                     m.embed(|e| {
 
                         e.title("StatBot Settings")
-                            .description(format!("Use the command format {}settings <option>", settings.prefix));
+                            .description(format!("Use the command format `{}settings <option>`", settings.prefix));
 
                         for i in 0..SETTINGS_CHOICES.len() {
                             e.field(
                                 SETTINGS_CHOICES_DESCR[i],
-                                format!("```{}settings {}```", settings.prefix, SETTINGS_CHOICES[i]), true);
+                                format!("`{}settings {}`", settings.prefix, SETTINGS_CHOICES[i]), true);
                         }
 
                         e
