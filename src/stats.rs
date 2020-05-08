@@ -114,7 +114,7 @@ impl Stats {
         buf
     }
 
-   pub fn user_now_offline(&mut self, uid: UserId) {
+   pub fn user_now_offline(&mut self, uid: UserId) -> bool {
         if self.online_since.contains_key(&uid) {
             let since = self.online_since.remove(&uid).unwrap();
 
@@ -125,12 +125,19 @@ impl Stats {
                 Some(time) => { *time += duration; },
                 None       => { self.online_time.insert(uid, duration); },
             }
+
+            true
+        } else {
+            false
         }
     }
 
-    pub fn user_now_online(&mut self, uid: UserId) {
+    pub fn user_now_online(&mut self, uid: UserId) -> bool {
         if !self.online_since.contains_key(&uid) {
             self.online_since.insert(uid, Instant::now());
+            true
+        } else {
+            false
         }
     }
 }

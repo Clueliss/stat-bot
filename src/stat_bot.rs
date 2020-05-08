@@ -181,12 +181,18 @@ impl EventHandler for StatBot {
 
         match new.channel_id {
             Some(id) if !id.name(&ctx).unwrap().starts_with("AFK") && !new.deaf && !new.self_deaf => {
-                st.user_now_online(new.user_id);
-                println!("<{}> User joined: {}", date_time, new.user_id.to_user(ctx).unwrap().name);
+                let state_changed = st.user_now_online(new.user_id);
+
+                if state_changed {
+                    println!("<{}> User joined: {}", date_time, new.user_id.to_user(ctx).unwrap().name);
+                }
             },
             _ => {
-                st.user_now_offline(new.user_id);
-                println!("<{}> User left: {}", date_time, new.user_id.to_user(&ctx).unwrap().name);
+                let state_changed = st.user_now_offline(new.user_id);
+
+                if state_changed {
+                    println!("<{}> User left: {}", date_time, new.user_id.to_user(&ctx).unwrap().name);
+                }
             },
         }
     }
