@@ -177,19 +177,15 @@ impl EventHandler for StatBot {
     fn voice_state_update(&self, ctx: Context, _: Option<GuildId>, old: Option<VoiceState>, new: VoiceState) {
         let mut st = STATS.lock().unwrap();
 
-        if old.map(|o| o.channel_id) != Some(new.channel_id) {
-            let date_time = Utc::now().format("%Y-%m-%d_%H:%M:%S");
-
-            match new.channel_id {
-                Some(_) if !new.deaf && !new.self_deaf => {
-                    st.user_now_online(new.user_id);
-                    println!("<{}> User joined: {}", date_time, new.user_id.to_user(ctx).unwrap().name);
-                },
-                _ => {
-                    st.user_now_offline(new.user_id);
-                    println!("<{}> User left: {}", date_time, new.user_id.to_user(&ctx).unwrap().name);
-                },
-            }
+        match new.channel_id {
+            Some(_) if !new.deaf && !new.self_deaf => {
+                st.user_now_online(new.user_id);
+                println!("<{}> User joined: {}", date_time, new.user_id.to_user(ctx).unwrap().name);
+            },
+            _ => {
+                st.user_now_offline(new.user_id);
+                println!("<{}> User left: {}", date_time, new.user_id.to_user(&ctx).unwrap().name);
+            },
         }
     }
 }
