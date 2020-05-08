@@ -37,7 +37,7 @@ lazy_static! {
 }
 
 
-fn seconds_to_human_readable(s_total: u64) -> String {
+fn seconds_to_discord_formatted(s_total: u64) -> String {
     let d = s_total/86400;
     let h = (s_total - d * 86400)/3600;
     let m = ((s_total - d * 86400) - h * 3600)/60;
@@ -117,7 +117,7 @@ impl StatBot {
                     for (uid, time) in sorted {
                         let user = uid.to_user(ctx).unwrap();
 
-                        e.field(user.name, seconds_to_human_readable(time.as_secs()), false);
+                        e.field(user.name, seconds_to_discord_formatted(time.as_secs()), false);
                     }
 
                     e
