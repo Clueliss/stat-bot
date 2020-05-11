@@ -8,32 +8,23 @@ use serenity::prelude::{EventHandler, Context};
 
 use crate::stats::*;
 
-use std::collections::{HashMap, BTreeMap};
+use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Mutex;
 use chrono::Utc;
 use std::time::Duration;
-use serde_json::Value;
-use std::io::{Write, Read};
+use std::path::{PathBuf, Path};
+
+use serde::{Deserialize, Serialize};
 
 
 pub static DEFAULT_PREFIX: &str = ">>";
-pub static STAT_FILE_NAME: &str = "stat.json";
-pub static TRANS_FILE_NAME: &str = "trans.json";
-pub static SETTINGS_FILE_NAME: &str = "settings.json";
-
-static SETTINGS_CHOICES: [&str; 1] = [
-    "prefix"
-];
-
-static SETTINGS_CHOICES_DESCR: [&str; 1] = [
-    ":exclamation: prefix"
-];
+static SETTINGS_CHOICES: [&str; 1] = ["prefix"];
+static SETTINGS_CHOICES_DESCR: [&str; 1] = [":exclamation: prefix"];
 
 
 lazy_static! {
-    pub static ref STATS: Mutex<Stats> = Mutex::new(Stats::new());
-    pub static ref OUTPUT_DIR: Mutex<String> = Mutex::new(String::new());
+    pub static ref STATS: Mutex<StatManager> = Mutex::new(StatManager::default());
 }
 
 
@@ -47,47 +38,30 @@ fn seconds_to_discord_formatted(s_total: u64) -> String {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub prefix: String,
-}
-
-impl Settings {
-    pub fn load<R: Read>(f: R) -> Result<Self, serde_json::Error> {
-        let settings: BTreeMap<String, Value> = serde_json::from_reader(f)?;
-
-        Ok(settings.get("prefix")
-            .and_then(Value::as_str)
-            .map(|p| Self{ prefix: p.to_string() })
-            .unwrap_or_default())
-    }
-
-    pub fn store<W: Write>(&self, f: W) -> Result<(), serde_json::Error> {
-        let conf = {
-            let mut buf = BTreeMap::new();
-            buf.insert("prefix", &self.prefix);
-
-            buf
-        };
-
-        serde_json::to_writer(f, &conf)
-    }
+    pub output_dir: PathBuf,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self{ prefix: DEFAULT_PREFIX.to_string() }
+        Self{ prefix: DEFAULT_PREFIX.to_string(), output_dir: PathBuf::new() }
     }
 }
 
 
 pub struct StatBot {
-    settings: Mutex<Settings>
+    settings: Mutex<Settings>,
+    settings_path: PathBuf
 }
 
 impl StatBot {
-    pub fn new(settings: Settings) -> Self {
-        Self{ settings: Mutex::new(settings) }
+    pub fn new<P: AsRef<Path>>(settings_path: P, settings: Settings) -> Self {
+        Self {
+            settings: Mutex::new(settings),
+            settings_path: settings_path.as_ref().to_path_buf()
+        }
     }
 
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
@@ -147,10 +121,10 @@ impl StatBot {
                         e.title("StatBot Settings")
                             .description(format!("Use the command format `{}settings <option>`", settings.prefix));
 
-                        for i in 0..SETTINGS_CHOICES.len() {
+                        for (choice, descr) in SETTINGS_CHOICES.iter().zip(SETTINGS_CHOICES_DESCR.iter()) {
                             e.field(
-                                SETTINGS_CHOICES_DESCR[i],
-                                format!("`{}settings {}`", settings.prefix, SETTINGS_CHOICES[i]), true);
+                                descr,
+                                format!("`{}settings {}`", settings.prefix, choice), true);
                         }
 
                         e
@@ -163,10 +137,8 @@ impl StatBot {
                     settings.prefix = args[1].to_string();
 
                     {
-                        let outdir = OUTPUT_DIR.lock().unwrap();
-
-                        let f = File::create(format!("{}/{}", outdir, SETTINGS_FILE_NAME)).unwrap();
-                        settings.store(f).unwrap();
+                        let f = File::create(&self.settings_path).unwrap();
+                        serde_json::to_writer(f, &settings).unwrap();
                     }
 
                     reply_sucess(&format!("prefix is now '{}'", settings.prefix));

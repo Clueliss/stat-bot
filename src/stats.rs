@@ -1,24 +1,76 @@
-use chrono::Utc;
+use chrono::{Utc, Date};
 
 use serenity::model::id::UserId;
 
 use std::collections::BTreeMap;
-use std::io::{Read, Write};
 use std::time::{Instant, Duration};
 use std::sync::Arc;
 use serenity::CacheAndHttp;
+use std::num::ParseIntError;
+
+use std::path::{Path, PathBuf};
+use std::fs::File;
+use std::io::Read;
+
+static DATE_FMT_STR: &str = "%Y-%m-%d";
+
+
+#[derive(Debug)]
+pub enum StatParseError {
+    UserIdParseError(ParseIntError),
+    JsonParseError(serde_json::Error),
+    IOError(std::io::Error),
+}
+
+impl From<ParseIntError> for StatParseError {
+    fn from(e: ParseIntError) -> Self {
+        StatParseError::UserIdParseError(e)
+    }
+}
+
+impl From<serde_json::Error> for StatParseError {
+    fn from(e: serde_json::Error) -> Self {
+        StatParseError::JsonParseError(e)
+    }
+}
+
+impl From<std::io::Error> for StatParseError {
+    fn from(e: std::io::Error) -> Self {
+        StatParseError::IOError(e)
+    }
+}
 
 
 #[derive(Clone, Default)]
-pub struct Stats {
+pub struct StatManager {
+    output_dir: PathBuf,
     online_time: BTreeMap<UserId, Duration>,
     online_since: BTreeMap<UserId, Instant>,
     cache_and_http: Arc<CacheAndHttp>,
 }
 
-impl Stats {
-    pub fn new() -> Self {
-        Self::default()
+impl StatManager {
+    fn stat_file_path(&self, date: Date<Utc>) -> PathBuf {
+        self.output_dir
+            .join(format!("stats_{}.json", date.format(DATE_FMT_STR)))
+    }
+
+    fn trans_file_path(&self, date: Date<Utc>) -> PathBuf {
+        self.output_dir
+            .join(format!("trans_{}.json", date.format(DATE_FMT_STR)))
+    }
+
+    pub fn new<P: AsRef<Path>>(output_dir: P) -> Self {
+        Self {
+            output_dir: output_dir.as_ref().to_path_buf(),
+            online_time: Default::default(),
+            online_since: Default::default(),
+            cache_and_http: Default::default()
+        }
+    }
+
+    pub fn set_output_dir<P: AsRef<Path>>(&mut self, outdir: P) {
+        self.output_dir = outdir.as_ref().to_path_buf();
     }
 
     pub fn set_cache_and_http(&mut self, ch: Arc<CacheAndHttp>) {
@@ -39,36 +91,71 @@ impl Stats {
             .collect()
     }
 
-    pub fn read_stats<F: Read>(&mut self, mut f: F) -> Result<(), std::io::Error> {
-        let date = Utc::now().format("%Y-%m-%d").to_string();
-        let mut j: BTreeMap<String, BTreeMap<UserId, u64>> = serde_json::from_reader(&mut f).unwrap_or_default();
+    fn get_stat_impl<R: Read>(rdr: R) -> Result<BTreeMap<UserId, Duration>, StatParseError> {
+        let j: BTreeMap<String, u64> = serde_json::from_reader(rdr)?;
 
-        let st_today = j.remove(&date).unwrap_or_default();
-        self.online_time = st_today.into_iter().map(|(uid, t)| (uid, Duration::new(t, 0))).collect();
+        j.into_iter()
+            .map(|(uid, secs)| {
+                let parsed_uid = uid.parse::<u64>()?;
+                Ok((UserId::from(parsed_uid), Duration::from_secs(secs)))
+            })
+            .collect()
+    }
+
+    pub fn get_stats_unbuffered(&self, date: Date<Utc>) -> Result<BTreeMap<UserId, Duration>, StatParseError> {
+        let f = File::open(self.stat_file_path(date))?;
+        Self::get_stat_impl(f)
+    }
+
+    pub fn read_stats(&mut self) -> Result<(), StatParseError> {
+
+        let newest = std::fs::read_dir(&self.output_dir)?
+            .map(|de| de.unwrap().path())
+            .filter(|p| !p.is_dir())
+            .filter(|p| {
+                let filen = p.file_name().unwrap().to_str().unwrap();
+                filen.starts_with("stats_")
+            })
+            .max();
+
+        self.online_time = match newest {
+            Some(fp) => {
+                let f = File::open(fp)?;
+                let newest_st = Self::get_stat_impl(f)?;
+
+                newest_st
+            },
+            None => Default::default(),
+        };
 
         Ok(())
     }
 
-
-    pub fn flush_stats<F>(&mut self, mut f: F) -> Result<(), std::io::Error>
-    where
-        F: Read + Write,
-    {
+    pub fn flush_stats(&mut self) -> Result<(), StatParseError> {
         self.update_stats();
 
-        let date = Utc::now().format("%Y-%m-%d").to_string();
+        {
+            let f = File::create(self.stat_file_path(Utc::today()))?;
 
-        let mut existent: BTreeMap<String, BTreeMap<String, u64>> = serde_json::from_reader(&mut f)
-            .unwrap_or(Default::default());
+            let new: BTreeMap<String, u64> = self.online_time
+                .clone()
+                .into_iter()
+                .map(|(uid, ontime)| (format!("{}", uid), ontime.as_secs()))
+                .collect();
 
-        let new: BTreeMap<String, u64> = self.online_time.clone()
-            .into_iter()
-            .map(|(uid, dur)| (format!("{}", uid), dur.as_secs()))
-            .collect();
+            serde_json::to_writer(f, &new)?;
+        }
 
-        existent.insert(date, new);
+        {
+            let f = File::create(self.trans_file_path(Utc::today()))?;
 
-        serde_json::to_writer(&mut f, &existent)?;
+            let trans: BTreeMap<String, String> = self.generate_translations()
+                .into_iter()
+                .map(|(uid, name)| (format!("{}", uid), name))
+                .collect();
+
+            serde_json::to_writer(f, &trans)?;
+        }
 
         Ok(())
     }
