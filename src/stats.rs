@@ -55,9 +55,9 @@ impl StatManager {
             .join(format!("stats_{}.json", date.format(DATE_FMT_STR)))
     }
 
-    fn trans_file_path(&self, date: Date<Utc>) -> PathBuf {
+    fn trans_file_path(&self) -> PathBuf {
         self.output_dir
-            .join(format!("trans_{}.json", date.format(DATE_FMT_STR)))
+            .join("trans.json")
     }
 
     pub fn new<P: AsRef<Path>>(output_dir: P) -> Self {
@@ -147,7 +147,7 @@ impl StatManager {
         }
 
         {
-            let f = File::create(self.trans_file_path(Utc::today()))?;
+            let f = File::create(self.trans_file_path())?;
 
             let trans: BTreeMap<String, String> = self.generate_translations()
                 .into_iter()
