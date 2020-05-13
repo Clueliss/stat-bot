@@ -7,4 +7,4 @@ Requires=docker.service
 OnCalendar=*-*-* 06,18:00:00
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timers.target
