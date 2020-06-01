@@ -204,7 +204,7 @@ impl StatManager {
     pub fn generate_graph(&self) -> std::io::Result<PathBuf> {
         let tmp_file_path = std::env::temp_dir().join("stat-bot-graph-out.png");
 
-        let output = Command::new("stat-graphing")
+        let output = Command::new("/usr/local/bin/stat-graphing")
             .arg("--input-dir")
             .arg(&self.output_dir)
             .arg("--output-file")
