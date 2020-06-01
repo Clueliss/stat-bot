@@ -3,6 +3,7 @@ extern crate chrono;
 extern crate libc;
 extern crate serde_json;
 extern crate serenity;
+extern crate tempfile;
 
 mod stats;
 mod stat_bot;

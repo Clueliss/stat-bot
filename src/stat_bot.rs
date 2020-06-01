@@ -11,11 +11,14 @@ use crate::stats::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Mutex;
-use chrono::Utc;
+use chrono::{Utc, Date};
 use std::time::Duration;
 use std::path::{PathBuf, Path};
 
 use serde::{Deserialize, Serialize};
+
+use clap::Clap;
+use tempfile::TempDir;
 
 
 pub static DEFAULT_PREFIX: &str = ">>";
@@ -67,9 +70,20 @@ impl StatBot {
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
 
         if args.len() > 0 {
-            msg.channel_id
-                .send_message(&ctx, |mb| mb.content(":x: Error: stats does not expect args"))
-                .unwrap();
+            if args[0] == "graph" {
+                let mut st = STATS.lock().unwrap();
+                st.update_stats();
+
+                let path: PathBuf = st.generate_graph().expect("stat graphing failed");
+
+                msg.channel_id
+                    .send_files(&ctx, std::iter::once(path.to_str().unwrap()), |m| m)
+                    .unwrap();
+            } else {
+                msg.channel_id
+                    .send_message(&ctx, |mb| mb.content(":x: Error: unknown subcommand"))
+                    .unwrap();
+            }
         } else {
             let mut st = STATS.lock().unwrap();
             st.update_stats();

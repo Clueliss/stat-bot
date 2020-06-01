@@ -11,6 +11,8 @@ use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io::Read;
+use std::process::{Command, exit};
+use tempfile::{TempDir, tempdir};
 
 static DATE_FMT_STR: &str = "%Y-%m-%d";
 
@@ -193,11 +195,24 @@ impl StatManager {
     }
 
     pub fn user_now_online(&mut self, uid: UserId) -> bool {
-        if !self.online_since.contains_key(&uid) {
-            self.online_since.insert(uid, Instant::now());
-            true
-        } else {
-            false
+        match self.online_since.insert(uid, Instant::now()) {
+            None => true,
+            Some(_) => false,
         }
     }
+
+    pub fn generate_graph(&self) -> std::io::Result<PathBuf> {
+        let tmp_file_path = std::env::temp_dir().join("stat-bot-graph-out.png");
+
+        let output = Command::new("stat-graphing")
+            .arg("--input-dir")
+            .arg(&self.output_dir)
+            .arg("--output-file")
+            .arg(&tmp_file_path)
+            .output()?;
+
+        Ok(tmp_file_path)
+    }
+
+
 }
