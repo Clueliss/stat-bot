@@ -11,15 +11,11 @@ use crate::stats::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Mutex;
-use chrono::{Utc, Date};
+use chrono::Utc;
 use std::time::Duration;
 use std::path::{PathBuf, Path};
 
 use serde::{Deserialize, Serialize};
-
-use clap::Clap;
-use tempfile::TempDir;
-
 
 pub static DEFAULT_PREFIX: &str = ">>";
 static SETTINGS_CHOICES: [&str; 1] = ["prefix"];
@@ -68,22 +64,41 @@ impl StatBot {
     }
 
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
-
         if args.len() > 0 {
-            if args[0] == "graph" {
+
+            enum E {
+                IOErr(std::io::Error),
+                ArgErr,
+            }
+
+            let maybe_path = {
                 let mut st = STATS.lock().unwrap();
                 st.update_stats();
 
-                let path: PathBuf = st.generate_graph().expect("stat graphing failed");
+                match &args {
+                    &["graph", "total"] | &["graph"] => st.generate_graph(true).map_err(E::IOErr),
+                    &["graph", "time-per-day"] => st.generate_graph(false).map_err(E::IOErr),
+                    _ => Err(E::ArgErr)
+                }
+            };
 
-                msg.channel_id
-                    .send_files(&ctx, std::iter::once(path.to_str().unwrap()), |m| m)
-                    .unwrap();
-            } else {
-                msg.channel_id
-                    .send_message(&ctx, |mb| mb.content(":x: Error: unknown subcommand"))
-                    .unwrap();
+            match maybe_path {
+                Ok(path) => {
+                    msg.channel_id
+                        .send_files(&ctx, std::iter::once(path.to_str().unwrap()), |m| m)
+                        .unwrap();
+                },
+                Err(E::ArgErr) => {
+                    msg.channel_id
+                        .send_message(&ctx, |mb| mb.content(":x: Error: unknown subcommand"))
+                        .unwrap();
+                },
+                Err(E::IOErr(e)) => {
+                    println!("E: stat graphing failed {:?}", e);
+                }
             }
+
+
         } else {
             let mut st = STATS.lock().unwrap();
             st.update_stats();

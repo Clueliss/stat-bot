@@ -11,8 +11,8 @@ use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io::Read;
-use std::process::{Command, exit};
-use tempfile::{TempDir, tempdir};
+use std::process::Command;
+use tempfile::{Builder, TempPath};
 
 static DATE_FMT_STR: &str = "%Y-%m-%d";
 
@@ -201,15 +201,26 @@ impl StatManager {
         }
     }
 
-    pub fn generate_graph(&self) -> std::io::Result<PathBuf> {
-        let tmp_file_path = std::env::temp_dir().join("stat-bot-graph-out.png");
+    pub fn generate_graph(&self, total: bool) -> std::io::Result<TempPath> {
+        let tmp_file_path = Builder::new()
+            .suffix(".png")
+            .tempfile()?
+            .into_temp_path();
 
         let output = Command::new("/usr/local/bin/stat-graphing")
-            .arg("--input-dir")
-            .arg(&self.output_dir)
-            .arg("--output-file")
-            .arg(&tmp_file_path)
+            .args(&[
+                "-x", "6",
+                "-y", "10",
+                "-n", "1080",
+                "-m", "1920",
+                "-s", "2020-05-11",
+                if total { "-t" } else { "" }
+            ])
+            .arg(&self.output_dir) // source dir
+            .arg(&tmp_file_path)   // output img
             .output()?;
+
+        println!("Debug:\n{:?}", output);
 
         Ok(tmp_file_path)
     }
