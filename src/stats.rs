@@ -213,17 +213,19 @@ impl StatManager {
             .tempfile()?
             .into_temp_path();
 
+        const ARGS: [&'static str; 11] = [
+            "-x", "6",
+            "-y", "10",
+            "-n", "1080",
+            "-m", "1920",
+            "-s", "2020-05-11",
+            "-t"
+        ];
+
         let output = Command::new(&self.graphing_tool_path)
-            .args(&[
-                "-x", "6",
-                "-y", "10",
-                "-n", "1080",
-                "-m", "1920",
-                "-s", "2020-05-11",
-                if total { "-t" } else { "" }
-            ])
-            .arg(&self.output_dir) // source dir
-            .arg(&tmp_file_path)   // output img
+            .args(if total { &ARGS } else { &ARGS[..ARGS.len() - 1] })
+            .arg(&self.output_dir)
+            .arg(&tmp_file_path)
             .output()?;
 
         println!("Debug:\n{:?}", output);
