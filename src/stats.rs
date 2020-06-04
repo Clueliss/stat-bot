@@ -228,7 +228,9 @@ impl StatManager {
             .arg(&tmp_file_path)
             .output()?;
 
-        println!("Debug:\n{:?}", output);
+        if !output.status.success() {
+            println!("Error: stat-graphing failed with output:\n{}", String::from_utf8(output.stdout).unwrap());
+        }
 
         Ok(tmp_file_path)
     }
