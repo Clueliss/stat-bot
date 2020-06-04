@@ -13,4 +13,4 @@ RUN sh /tmp/rustup.sh -y --default-toolchain=nightly
 RUN cd /tmp && git clone https://github.com/Clueliss/stat-bot
 RUN sh /tmp/stat-bot/deploy/update.sh
 
-CMD ["/init", "--settings-file", "/data/stat-bot.conf"]
+CMD ["/init", "--settings-file", "/data/stat-bot.conf", "--graphing-tool-path", "/usr/local/bin/stat-graphing"]

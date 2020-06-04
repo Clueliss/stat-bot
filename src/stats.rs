@@ -46,6 +46,7 @@ impl From<std::io::Error> for StatParseError {
 #[derive(Clone, Default)]
 pub struct StatManager {
     output_dir: PathBuf,
+    graphing_tool_path: PathBuf,
     online_time: BTreeMap<UserId, Duration>,
     online_since: BTreeMap<UserId, Instant>,
     cache_and_http: Arc<CacheAndHttp>,
@@ -65,6 +66,7 @@ impl StatManager {
     pub fn new<P: AsRef<Path>>(output_dir: P) -> Self {
         Self {
             output_dir: output_dir.as_ref().to_path_buf(),
+            graphing_tool_path: Default::default(),
             online_time: Default::default(),
             online_since: Default::default(),
             cache_and_http: Default::default()
@@ -73,6 +75,10 @@ impl StatManager {
 
     pub fn set_output_dir<P: AsRef<Path>>(&mut self, outdir: P) {
         self.output_dir = outdir.as_ref().to_path_buf();
+    }
+
+    pub fn set_graphing_tool_path<P: AsRef<Path>>(&mut self, path: P) {
+        self.graphing_tool_path = path.as_ref().to_path_buf();
     }
 
     pub fn set_cache_and_http(&mut self, ch: Arc<CacheAndHttp>) {
@@ -207,7 +213,7 @@ impl StatManager {
             .tempfile()?
             .into_temp_path();
 
-        let output = Command::new("/usr/local/bin/stat-graphing")
+        let output = Command::new(&self.graphing_tool_path)
             .args(&[
                 "-x", "6",
                 "-y", "10",

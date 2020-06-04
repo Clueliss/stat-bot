@@ -18,7 +18,10 @@ use stat_bot::Settings;
 #[derive(Clap)]
 struct Opts {
     #[clap(short = "s", long = "settings-file")]
-    settings_file: String
+    settings_file: String,
+
+    #[clap(short= "g", long = "graphing-tool-path")]
+    graphing_tool_path: String,
 }
 
 
@@ -55,6 +58,7 @@ fn main() {
     {
         let mut st = stat_bot::STATS.lock().unwrap();
         st.set_output_dir(&settings.output_dir);
+        st.set_graphing_tool_path(&opts.graphing_tool_path);
         st.set_cache_and_http(client.cache_and_http.clone());
 
         st.read_stats().unwrap();
