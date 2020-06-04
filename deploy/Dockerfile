@@ -6,7 +6,7 @@ ENV QT_QPA_PLATFORM=offscreen
 
 VOLUME ["/data"]
 
-RUN dnf install gcc g++ git openssl-devel cmake make freetype-devel expat-devel qt5-qtbase-devel qt5-qtbase-gui -y
+RUN dnf install gcc g++ git openssl-devel cmake make qt5-qtbase-devel qt5-qtbase-gui -y
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs > /tmp/rustup.sh
 RUN sh /tmp/rustup.sh -y --default-toolchain=nightly
