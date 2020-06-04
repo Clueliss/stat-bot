@@ -83,7 +83,9 @@ impl StatBot {
             };
 
             match maybe_path {
-                Ok(path) => {
+                Ok(p) => {
+                    let path = p.keep().unwrap();
+
                     msg.channel_id
                         .send_files(&ctx, std::iter::once(path.to_str().unwrap()), |m| m)
                         .unwrap();
