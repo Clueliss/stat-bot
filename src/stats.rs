@@ -201,9 +201,13 @@ impl StatManager {
     }
 
     pub fn user_now_online(&mut self, uid: UserId) -> bool {
-        match self.online_since.insert(uid, Instant::now()) {
-            None => true,
-            Some(_) => false,
+        if !self.online_since.contains_key(&uid) {
+            match self.online_since.insert(uid, Instant::now()) {
+                None => true,
+                Some(_) => false,
+            }
+        } else {
+            false
         }
     }
 
