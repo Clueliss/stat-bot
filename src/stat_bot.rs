@@ -64,7 +64,7 @@ impl StatBot {
     }
 
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
-        if args.len() > 0 {
+        /*if args.len() > 0 {
 
             enum E {
                 IOErr(std::io::Error),
@@ -99,7 +99,7 @@ impl StatBot {
             }
 
 
-        } else {
+        } else */ {
             let mut st = STATS.lock().unwrap();
             st.update_stats();
 
