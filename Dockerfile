@@ -15,8 +15,7 @@ RUN cd /tmp/stat-bot && \
     cargo build --release && \
     rm /init || true > /dev/null && \
     cp ./target/release/stat-bot /init && \
-    chmod +x /init && \
-    cp ./deploy/stat-bot.conf /data
+    chmod +x /init
 
 RUN cd /tmp && git clone https://github.com/Clueliss/StatsGraphing
 RUN cd /tmp/StatsGraphing && \
