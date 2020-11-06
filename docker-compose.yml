@@ -1,12 +1,9 @@
 version: "3"
 services:
     stat_bot:
+        container_name: stat_bot
         build: .
-
         environment:
-            - PATH=/root/.cargo/bin:$PATH
-            - QT_QPA_PLATFORM=offscreen
             - STAT_BOT_DISCORD_TOKEN=
-
         volumes:
             - ./data:/data

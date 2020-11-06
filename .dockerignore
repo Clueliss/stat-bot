@@ -1,0 +1,8 @@
+target/
+deploy/
+
+.git/
+.idea/
+
+.gitignore
+Cargo.lock
