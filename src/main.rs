@@ -1,5 +1,4 @@
 extern crate chrono;
-extern crate libc;
 extern crate serde_json;
 extern crate serenity;
 extern crate tempfile;
@@ -30,7 +29,7 @@ fn main() {
     let opts: Opts = Opts::parse();
 
     let settings: Settings = match File::open(&opts.settings_file) {
-            Ok(f) => serde_json::from_reader(f).unwrap(),
+            Ok(f) => serde_json::from_reader(f).expect("invalid json in config"),
             Err(_) => Settings::default(),
         };
 
@@ -38,19 +37,24 @@ fn main() {
         let mut s = StatManager::default();
         s.set_output_dir(&settings.output_dir);
         s.set_graphing_tool_path(&opts.graphing_tool_path);
-        s.read_stats().unwrap();
+        s.read_stats()
+            .expect("failed to read stats");
 
         s
     }));
 
-    let tok = std::env::var("STAT_BOT_DISCORD_TOKEN").unwrap();
-    let mut client = Client::new(tok, stat_bot::StatBot::new(&opts.settings_file, settings.clone(), stat_man.clone())).unwrap();
+    let tok = std::env::var("STAT_BOT_DISCORD_TOKEN")
+        .expect("failed to read token from env");
+
+    let mut client = Client::new(tok, stat_bot::StatBot::new(&opts.settings_file, settings.clone(), stat_man.clone()))
+        .expect("failed to create discord client");
 
     stat_man.lock().unwrap().set_cache_and_http(client.cache_and_http.clone());
 
     unsafe {
         signal_hook::register(signal_hook::SIGINT, move || {
-            stat_man.lock().unwrap().flush_stats().unwrap();
+            stat_man.lock().unwrap().flush_stats()
+                .expect("could not flush stats");
         }).unwrap();
     }
 
