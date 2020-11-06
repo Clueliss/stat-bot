@@ -1,9 +1,9 @@
 extern crate chrono;
-#[macro_use] extern crate lazy_static;
 extern crate libc;
 extern crate serde_json;
 extern crate serenity;
 extern crate tempfile;
+extern crate signal_hook;
 
 mod stats;
 mod stat_bot;
@@ -13,28 +13,18 @@ use clap::Clap;
 use serenity::client::Client;
 use std::fs::File;
 use stat_bot::Settings;
+use std::sync::{Arc, Mutex};
+use crate::stats::StatManager;
 
 
 #[derive(Clap)]
 struct Opts {
-    #[clap(short = "s", long = "settings-file")]
+    #[clap(short = 's', long = "settings-file")]
     settings_file: String,
 
-    #[clap(short= "g", long = "graphing-tool-path")]
+    #[clap(short= 'g', long = "graphing-tool-path")]
     graphing_tool_path: String,
 }
-
-
-fn signal_handler(sig: libc::c_int) {
-    let mut st = stat_bot::STATS.lock().unwrap();
-
-    st.flush_stats().unwrap();
-
-    if sig == libc::SIGTERM {
-        std::process::exit(0);
-    }
-}
-
 
 fn main() {
     let opts: Opts = Opts::parse();
@@ -44,24 +34,23 @@ fn main() {
             Err(_) => Settings::default(),
         };
 
-    unsafe {
-        let signal_handler_fn_ptr = signal_handler as *const fn(libc::c_int);
-        let sighandler = std::mem::transmute::<*const fn(libc::c_int), libc::sighandler_t>(signal_handler_fn_ptr);
+    let stat_man = Arc::new(Mutex::new({
+        let mut s = StatManager::default();
+        s.set_output_dir(&settings.output_dir);
+        s.set_graphing_tool_path(&opts.graphing_tool_path);
 
-        libc::signal(libc::SIGTERM, sighandler);
-        libc::signal(libc::SIGINT, sighandler);
-    }
+        s
+    }));
 
     let tok = std::env::var("STAT_BOT_DISCORD_TOKEN").unwrap();
-    let mut client = Client::new(tok, stat_bot::StatBot::new(&opts.settings_file, settings.clone())).unwrap();
+    let mut client = Client::new(tok, stat_bot::StatBot::new(&opts.settings_file, settings.clone(), stat_man.clone())).unwrap();
 
-    {
-        let mut st = stat_bot::STATS.lock().unwrap();
-        st.set_output_dir(&settings.output_dir);
-        st.set_graphing_tool_path(&opts.graphing_tool_path);
-        st.set_cache_and_http(client.cache_and_http.clone());
+    stat_man.lock().unwrap().set_cache_and_http(client.cache_and_http.clone());
 
-        st.read_stats().unwrap();
+    unsafe {
+        signal_hook::register(signal_hook::SIGINT, move || {
+            stat_man.lock().unwrap().flush_stats().unwrap();
+        }).unwrap();
     }
 
     client.start().unwrap();

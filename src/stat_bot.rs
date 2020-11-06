@@ -10,7 +10,7 @@ use crate::stats::*;
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::sync::Mutex;
+use std::sync::{Mutex, Arc};
 use chrono::Utc;
 use std::time::Duration;
 use std::path::{PathBuf, Path};
@@ -20,11 +20,6 @@ use serde::{Deserialize, Serialize};
 pub static DEFAULT_PREFIX: &str = ">>";
 static SETTINGS_CHOICES: [&str; 1] = ["prefix"];
 static SETTINGS_CHOICES_DESCR: [&str; 1] = [":exclamation: prefix"];
-
-
-lazy_static! {
-    pub static ref STATS: Mutex<StatManager> = Mutex::new(StatManager::default());
-}
 
 
 fn seconds_to_discord_formatted(s_total: u64) -> String {
@@ -52,14 +47,16 @@ impl Default for Settings {
 
 pub struct StatBot {
     settings: Mutex<Settings>,
-    settings_path: PathBuf
+    settings_path: PathBuf,
+    stat_man: Arc<Mutex<StatManager>>
 }
 
 impl StatBot {
-    pub fn new<P: AsRef<Path>>(settings_path: P, settings: Settings) -> Self {
+    pub fn new<P: AsRef<Path>>(settings_path: P, settings: Settings, stat_man: Arc<Mutex<StatManager>>) -> Self {
         Self {
             settings: Mutex::new(settings),
-            settings_path: settings_path.as_ref().to_path_buf()
+            settings_path: settings_path.as_ref().to_path_buf(),
+            stat_man
         }
     }
 
@@ -72,7 +69,7 @@ impl StatBot {
             }
 
             let maybe_path = {
-                let mut st = STATS.lock().unwrap();
+                let mut st = self.stat_man.lock().unwrap();
                 st.update_stats();
 
                 match &args {
@@ -100,7 +97,7 @@ impl StatBot {
 
 
         } else {
-            let mut st = STATS.lock().unwrap();
+            let mut st = self.stat_man.lock().unwrap();
             st.update_stats();
 
             msg.channel_id
@@ -209,7 +206,7 @@ impl EventHandler for StatBot {
     }
 
     fn ready(&self, ctx: Context, rdy: Ready) {
-        let mut st = STATS.lock().unwrap();
+        let mut st = self.stat_man.lock().unwrap();
         let tlof = rdy.guilds.get(0).unwrap();
 
         let channels: HashMap<ChannelId, GuildChannel> = tlof.id().channels(&ctx).unwrap();
@@ -235,7 +232,7 @@ impl EventHandler for StatBot {
     }
 
     fn voice_state_update(&self, ctx: Context, _: Option<GuildId>, _old: Option<VoiceState>, new: VoiceState) {
-        let mut st = STATS.lock().unwrap();
+        let mut st = self.stat_man.lock().unwrap();
 
         let date_time = Utc::now().format("%Y-%m-%d_%H:%M:%S");
 
