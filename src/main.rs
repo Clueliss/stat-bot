@@ -38,6 +38,7 @@ fn main() {
         let mut s = StatManager::default();
         s.set_output_dir(&settings.output_dir);
         s.set_graphing_tool_path(&opts.graphing_tool_path);
+        s.read_stats().unwrap();
 
         s
     }));
