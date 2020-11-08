@@ -6,7 +6,7 @@ use serenity::prelude::{EventHandler, Context};
 
 use crate::stats::*;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::fs::File;
 use std::sync::{Mutex, Arc};
 use chrono::Utc;
@@ -82,6 +82,19 @@ impl StatBot {
             settings_path: settings_path.as_ref().to_path_buf(),
             stat_man,
         }
+    }
+
+    fn force_username_update_subroutine(&self, ctx: &Context, _msg: &Message, _args: &[&str]) {
+        let mut st = self.stat_man.lock().unwrap();
+
+        let usernames: BTreeMap<UserId, String> = st.user_iter().filter_map(|uid| {
+            match uid.to_user(ctx) {
+                Ok(user) => Some((uid.clone(), user.name)),
+                Err(_) => None,
+            }
+        }).collect();
+
+        st.force_username_update(usernames);
     }
 
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
@@ -222,6 +235,7 @@ impl EventHandler for StatBot {
                     match cmd {
                         "stats" => self.stats_subroutine(&ctx, &msg, &args[..]),
                         "settings" => self.settings_subroutine(&mut settings, &ctx, &msg, &args[..]),
+                        "force-username-update" => self.force_username_update_subroutine(&ctx, &msg, &args[..]),
                         _ => (),
                     }
                 }

@@ -77,8 +77,8 @@ impl StatManager {
         }
     }
 
-    pub fn users(&self) -> Vec<UserId> {
-        self.online_time.iter().map(|(uid, _)| uid.clone()).collect()
+    pub fn user_iter(&self) -> impl Iterator<Item=&UserId> {
+        self.online_time.iter().map(|(uid, _)| uid)
     }
 
     pub fn stats_iter(&self) -> impl Iterator<Item=(&UserId, &(String, Duration))> {
@@ -230,6 +230,15 @@ impl StatManager {
             }
         } else {
             false
+        }
+    }
+
+    pub fn force_username_update(&mut self, trans: BTreeMap<UserId, String>) {
+        for (uid, new_name) in trans {
+            match self.online_time.get_mut(&uid) {
+                Some((old_name, _)) => *old_name = new_name,
+                None => (),
+            }
         }
     }
 
