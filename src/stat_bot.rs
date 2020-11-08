@@ -130,22 +130,18 @@ impl StatBot {
 
                     e.title("Time Wasted");
 
-                    let sorted: Vec<(UserId, Duration)> = {
-                        let mut buf: Vec<(UserId, Duration)> = st.stats_iter()
+                    let sorted = {
+                        let mut buf: Vec<(UserId, (String, Duration))> = st.stats_iter()
                             .map(|(uid, t)| (uid.clone(), t.clone()))
                             .collect();
 
-                        buf.sort_by(|(_, t1), (_, t2)| t2.cmp(t1));
+                        buf.sort_by(|(_, (_, t1)), (_, (_, t2))| t2.cmp(t1));
                         buf
                     };
 
-                    for (uid, time) in sorted {
-                        let time = seconds_to_discord_formatted(time.as_secs());
-
-                        match uid.to_user(ctx) {
-                            Ok(user) => e.field(user.name, time, false),
-                            Err(_) => e.field(format!("{:?}", uid), time, false),
-                        };
+                    for (_, (username, dur)) in sorted {
+                        let secs = seconds_to_discord_formatted(dur.as_secs());
+                        e.field(username, secs, false);
                     }
 
                     e
@@ -248,7 +244,7 @@ impl EventHandler for StatBot {
                             for m in members {
 
                                 match m.user_id().to_user(&ctx) {
-                                    Ok(user) => if !user.bot { st.user_now_online(m.user_id()); },
+                                    Ok(user) => if !user.bot { st.user_now_online(m.user_id(), Some(user.name)); },
                                     Err(e) => { eprintln!("E: could not determine if user with id {:?} is bot, counting anyways {:?}", m.user_id(), e); }
                                 }
                             }
@@ -272,7 +268,7 @@ impl EventHandler for StatBot {
         match new.channel_id {
             Some(id) if !id.name(&ctx).unwrap().starts_with("AFK") && !new.deaf && !new.self_deaf => {
                 let state_changed = self.stat_man.lock().unwrap()
-                    .user_now_online(new.user_id);
+                    .user_now_online(new.user_id, username.clone());
 
                 if state_changed {
                     log_user_state_change(&new.user_id, username.as_ref(), UserState::Online);

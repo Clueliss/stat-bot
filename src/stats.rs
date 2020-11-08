@@ -14,6 +14,10 @@ use tempfile::{Builder, TempPath};
 
 static DATE_FMT_STR: &str = "%Y-%m-%d";
 
+fn unwrap_username(uid: &UserId, username: Option<String>) -> String {
+    username.unwrap_or(format!("{:?}", uid))
+}
+
 
 #[derive(Debug)]
 pub enum StatParseError {
@@ -77,9 +81,8 @@ impl StatManager {
         self.online_time.iter().map(|(uid, _)| uid.clone()).collect()
     }
 
-    pub fn stats_iter(&self) -> impl Iterator<Item=(&UserId, &Duration)> {
+    pub fn stats_iter(&self) -> impl Iterator<Item=(&UserId, &(String, Duration))> {
         self.online_time.iter()
-            .map(|(uid, (_name, dur))| (uid, dur))
     }
 
     pub fn generate_translations(&self) -> BTreeMap<UserId, String> {
@@ -174,7 +177,7 @@ impl StatManager {
 
             match self.online_time.get_mut(&uid) {
                 Some((_, t)) => { *t += duration; },
-                None    => { self.online_time.insert(uid.clone(), (format!("{:?}", uid), duration)); }
+                None    => { self.online_time.insert(uid.clone(), (unwrap_username(&uid, None), duration)); }
             }
 
             *timestamp = Instant::now();
@@ -183,7 +186,7 @@ impl StatManager {
 
     pub fn user_now_offline(&mut self, uid: UserId, username: Option<String>) -> bool {
 
-        let new_username = username.unwrap_or(format!("{:?}", uid));
+        let new_username = unwrap_username(&uid, username);
 
         match self.online_since.remove(&uid) {
             Some(since) => {
@@ -207,7 +210,19 @@ impl StatManager {
         }
     }
 
-    pub fn user_now_online(&mut self, uid: UserId) -> bool {
+    pub fn user_now_online(&mut self, uid: UserId, username: Option<String>) -> bool {
+
+        let new_username = unwrap_username(&uid, username);
+
+        match self.online_time.get_mut(&uid) {
+            Some((name, _)) => {
+                if name != &new_username {
+                    *name = new_username;
+                }
+            },
+            None => { self.online_time.insert(uid, (new_username, Duration::from_secs(0))); }
+        }
+
         if !self.online_since.contains_key(&uid) {
             match self.online_since.insert(uid, Instant::now()) {
                 None => true,
