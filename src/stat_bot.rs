@@ -1,8 +1,6 @@
 use serenity::model::channel::{Message, GuildChannel, ChannelType};
 use serenity::model::gateway::Ready;
-use serenity::model::guild::Member;
 use serenity::model::id::{GuildId, ChannelId, UserId};
-use serenity::model::user::User;
 use serenity::model::voice::VoiceState;
 use serenity::prelude::{EventHandler, Context};
 
@@ -16,7 +14,6 @@ use std::time::Duration;
 use std::path::{PathBuf, Path};
 
 use serde::{Deserialize, Serialize};
-use chrono::format::{DelayedFormat, StrftimeItems};
 
 pub static DEFAULT_PREFIX: &str = ">>";
 static SETTINGS_CHOICES: [&str; 1] = ["prefix"];
@@ -36,16 +33,16 @@ fn seconds_to_discord_formatted(s_total: u64) -> String {
     format!("*{}* ***D***, *{}* ***H***, *{}* ***M***, *{}* ***S***", d, h, m, s)
 }
 
-fn log_user_state_change(uid: &UserId, ctx: &Context, state: UserState) {
+fn log_user_state_change(uid: &UserId, username: Option<&String>, state: UserState) {
 
     let now = Utc::now().format("%Y-%m-%d_%H:%M:%S");
 
-    match uid.to_user(ctx) {
-        Ok(user) => match state {
-            UserState::Online  => println!("<{now}> User joined: {name}", now=now, name=user.name),
-            UserState::Offline => println!("<{now}> User left: {name}", now=now, name=user.name),
+    match username {
+        Some(name) => match state {
+            UserState::Online  => println!("<{now}> User joined: {name}", now=now, name=name),
+            UserState::Offline => println!("<{now}> User left: {name}", now=now, name=name),
         },
-        Err(e) => match state {
+        None => match state {
             UserState::Online => {
                 println!("<{now}> User joined: {uid}", now=now, uid=uid);
                 eprintln!("  ^- E: failed to receive username for: {:?}", uid);
@@ -75,7 +72,7 @@ impl Default for Settings {
 pub struct StatBot {
     settings: Mutex<Settings>,
     settings_path: PathBuf,
-    stat_man: Arc<Mutex<StatManager>>
+    stat_man: Arc<Mutex<StatManager>>,
 }
 
 impl StatBot {
@@ -83,7 +80,7 @@ impl StatBot {
         Self {
             settings: Mutex::new(settings),
             settings_path: settings_path.as_ref().to_path_buf(),
-            stat_man
+            stat_man,
         }
     }
 
@@ -147,7 +144,7 @@ impl StatBot {
 
                         match uid.to_user(ctx) {
                             Ok(user) => e.field(user.name, time, false),
-                            Err(err) => e.field(format!("{:?}", uid), time, false),
+                            Err(_) => e.field(format!("{:?}", uid), time, false),
                         };
                     }
 
@@ -256,7 +253,7 @@ impl EventHandler for StatBot {
                                 }
                             }
                         },
-                        Err(e) => {
+                        Err(_) => {
                             eprintln!("E: failed to enumerate members for channel {:?}", ch.name)
                         }
                     }
@@ -270,19 +267,23 @@ impl EventHandler for StatBot {
 
     fn voice_state_update(&self, ctx: Context, _: Option<GuildId>, _old: Option<VoiceState>, new: VoiceState) {
 
+        let username = new.user_id.to_user(&ctx).map(|u| u.name).ok();
+
         match new.channel_id {
             Some(id) if !id.name(&ctx).unwrap().starts_with("AFK") && !new.deaf && !new.self_deaf => {
-                let state_changed = self.stat_man.lock().unwrap().user_now_online(new.user_id);
+                let state_changed = self.stat_man.lock().unwrap()
+                    .user_now_online(new.user_id);
 
                 if state_changed {
-                    log_user_state_change(&new.user_id, &ctx, UserState::Online);
+                    log_user_state_change(&new.user_id, username.as_ref(), UserState::Online);
                 }
             },
             _ => {
-                let state_changed = self.stat_man.lock().unwrap().user_now_offline(new.user_id);
+                let state_changed = self.stat_man.lock().unwrap()
+                    .user_now_offline(new.user_id, username.clone());
 
                 if state_changed {
-                    log_user_state_change(&new.user_id, &ctx, UserState::Offline);
+                    log_user_state_change(&new.user_id, username.as_ref(), UserState::Offline);
                 }
             },
         }

@@ -4,8 +4,6 @@ use serenity::model::id::UserId;
 
 use std::collections::BTreeMap;
 use std::time::{Instant, Duration};
-use std::sync::Arc;
-use serenity::CacheAndHttp;
 use std::num::ParseIntError;
 
 use std::path::{Path, PathBuf};
@@ -43,13 +41,12 @@ impl From<std::io::Error> for StatParseError {
 }
 
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct StatManager {
     output_dir: PathBuf,
     graphing_tool_path: PathBuf,
-    online_time: BTreeMap<UserId, Duration>,
-    online_since: BTreeMap<UserId, Instant>,
-    cache_and_http: Arc<CacheAndHttp>,
+    online_time: BTreeMap<UserId, (String, Duration)>,
+    online_since: BTreeMap<UserId, Instant>
 }
 
 impl StatManager {
@@ -63,57 +60,51 @@ impl StatManager {
             .join("trans.json")
     }
 
-    pub fn new<P: AsRef<Path>>(output_dir: P) -> Self {
+    pub fn new<OutDir, GraphingPath>(output_dir: OutDir, graphing_tool_path: GraphingPath) -> Self
+    where
+        OutDir: AsRef<Path>,
+        GraphingPath: AsRef<Path>
+    {
         Self {
             output_dir: output_dir.as_ref().to_path_buf(),
-            graphing_tool_path: Default::default(),
+            graphing_tool_path: graphing_tool_path.as_ref().to_path_buf(),
             online_time: Default::default(),
-            online_since: Default::default(),
-            cache_and_http: Default::default()
+            online_since: Default::default()
         }
-    }
-
-    pub fn set_output_dir<P: AsRef<Path>>(&mut self, outdir: P) {
-        self.output_dir = outdir.as_ref().to_path_buf();
-    }
-
-    pub fn set_graphing_tool_path<P: AsRef<Path>>(&mut self, path: P) {
-        self.graphing_tool_path = path.as_ref().to_path_buf();
-    }
-
-    pub fn set_cache_and_http(&mut self, ch: Arc<CacheAndHttp>) {
-        self.cache_and_http = ch;
     }
 
     pub fn users(&self) -> Vec<UserId> {
         self.online_time.iter().map(|(uid, _)| uid.clone()).collect()
     }
 
-    pub fn stats_iter(&self) -> std::collections::btree_map::Iter<UserId, Duration> {
+    pub fn stats_iter(&self) -> impl Iterator<Item=(&UserId, &Duration)> {
         self.online_time.iter()
+            .map(|(uid, (_name, dur))| (uid, dur))
     }
 
     pub fn generate_translations(&self) -> BTreeMap<UserId, String> {
         self.online_time.iter()
-            .filter_map(|(uid, _)| uid.clone().to_user(&self.cache_and_http).ok())
-            .map(|user| (user.id, user.name))
+            .map(|(uid, (username, _))| (uid.clone(), username.clone()))
             .collect()
     }
 
-    fn get_stat_impl<R: Read>(rdr: R) -> Result<BTreeMap<UserId, Duration>, StatParseError> {
-        let j: BTreeMap<String, u64> = serde_json::from_reader(rdr)?;
+    fn get_stat_impl<StatR: Read, TransR: Read>(srdr: StatR, trdr: TransR) -> Result<BTreeMap<UserId, (String, Duration)>, StatParseError> {
+        let stats: BTreeMap<String, u64> = serde_json::from_reader(srdr)?;
+        let trans: BTreeMap<u64, String> = serde_json::from_reader(trdr)?;
 
-        j.into_iter()
+        stats.into_iter()
             .map(|(uid, secs)| {
                 let parsed_uid = uid.parse::<u64>()?;
-                Ok((UserId::from(parsed_uid), Duration::from_secs(secs)))
+                let username = trans.get(&parsed_uid).cloned().unwrap_or(format!("{:?}", UserId(parsed_uid)));
+                Ok((UserId::from(parsed_uid), (username.clone(), Duration::from_secs(secs))))
             })
             .collect()
     }
 
-    pub fn get_stats_unbuffered(&self, date: Date<Utc>) -> Result<BTreeMap<UserId, Duration>, StatParseError> {
-        let f = File::open(self.stat_file_path(date))?;
-        Self::get_stat_impl(f)
+    pub fn get_stats_unbuffered(&self, date: Date<Utc>) -> Result<BTreeMap<UserId, (String, Duration)>, StatParseError> {
+        let stats = File::open(self.stat_file_path(date))?;
+        let trans = File::open(self.trans_file_path())?;
+        Self::get_stat_impl(stats, trans)
     }
 
     pub fn read_stats(&mut self) -> Result<(), StatParseError> {
@@ -135,8 +126,9 @@ impl StatManager {
 
         self.online_time = match newest {
             Some(fp) => {
-                let f = File::open(fp)?;
-                let newest_st = Self::get_stat_impl(f)?;
+                let stats = File::open(fp)?;
+                let trans = File::open(self.trans_file_path())?;
+                let newest_st = Self::get_stat_impl(stats, trans)?;
 
                 newest_st
             },
@@ -155,7 +147,7 @@ impl StatManager {
             let new: BTreeMap<String, u64> = self.online_time
                 .clone()
                 .into_iter()
-                .map(|(uid, ontime)| (format!("{}", uid), ontime.as_secs()))
+                .map(|(uid, (_username, ontime))| (format!("{}", uid), ontime.as_secs()))
                 .collect();
 
             serde_json::to_writer(f, &new)?;
@@ -181,23 +173,32 @@ impl StatManager {
                 .duration_since(timestamp.clone());
 
             match self.online_time.get_mut(&uid) {
-                Some(t) => { *t += duration; },
-                None    => { self.online_time.insert(uid.clone(), duration); }
+                Some((_, t)) => { *t += duration; },
+                None    => { self.online_time.insert(uid.clone(), (format!("{:?}", uid), duration)); }
             }
 
             *timestamp = Instant::now();
         }
     }
 
-    pub fn user_now_offline(&mut self, uid: UserId) -> bool {
+    pub fn user_now_offline(&mut self, uid: UserId, username: Option<String>) -> bool {
+
+        let new_username = username.unwrap_or(format!("{:?}", uid));
+
         match self.online_since.remove(&uid) {
             Some(since) => {
                 let duration = Instant::now()
                     .duration_since(since);
 
                 match self.online_time.get_mut(&uid) {
-                    Some(time) => { *time += duration; },
-                    None => { self.online_time.insert(uid, duration); },
+                    Some((u, t)) => {
+                        *t += duration;
+
+                        if u != &new_username {
+                            *u = new_username;
+                        }
+                    },
+                    None => { self.online_time.insert(uid, (new_username, duration)); },
                 }
 
                 true
@@ -241,7 +242,7 @@ impl StatManager {
         if !output.status.success() {
             match String::from_utf8(output.stdout) {
                 Ok(emsg) => eprintln!("E: stat-graphing failed with output:\n{}", emsg),
-                Err(e) => eprintln!("E: stat-graphing failed but could not decode output")
+                Err(_) => eprintln!("E: stat-graphing failed but could not decode output")
             }
         }
 

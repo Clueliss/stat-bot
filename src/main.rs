@@ -34,9 +34,7 @@ fn main() {
         };
 
     let stat_man = Arc::new(Mutex::new({
-        let mut s = StatManager::default();
-        s.set_output_dir(&settings.output_dir);
-        s.set_graphing_tool_path(&opts.graphing_tool_path);
+        let mut s = StatManager::new(&settings.output_dir, &opts.graphing_tool_path);
         s.read_stats()
             .expect("failed to read stats");
 
@@ -46,16 +44,15 @@ fn main() {
     let tok = std::env::var("STAT_BOT_DISCORD_TOKEN")
         .expect("failed to read token from env");
 
-    let mut client = Client::new(tok, stat_bot::StatBot::new(&opts.settings_file, settings.clone(), stat_man.clone()))
+    let mut client = Client::new(tok, stat_bot::StatBot::new(&opts.settings_file, settings, stat_man.clone()))
         .expect("failed to create discord client");
-
-    stat_man.lock().unwrap().set_cache_and_http(client.cache_and_http.clone());
 
     unsafe {
         signal_hook::register(signal_hook::SIGINT, move || {
-            stat_man.lock().unwrap().flush_stats()
+            stat_man.lock().expect("lock failed in sighandler")
+                .flush_stats()
                 .expect("could not flush stats");
-        }).unwrap();
+        }).expect("failed to register signal handler");
     }
 
     client.start().unwrap();
