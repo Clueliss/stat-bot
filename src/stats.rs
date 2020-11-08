@@ -95,7 +95,8 @@ impl StatManager {
 
     pub fn generate_translations(&self) -> BTreeMap<UserId, String> {
         self.online_time.iter()
-            .map(|(uid, _)| (uid.clone(), uid.to_user(&self.cache_and_http).unwrap().name))
+            .filter_map(|(uid, _)| uid.clone().to_user(&self.cache_and_http).ok())
+            .map(|user| (user.id, user.name))
             .collect()
     }
 
@@ -118,11 +119,17 @@ impl StatManager {
     pub fn read_stats(&mut self) -> Result<(), StatParseError> {
 
         let newest = std::fs::read_dir(&self.output_dir)?
-            .map(|de| de.unwrap().path())
+            .filter_map(|de| de.ok())
+            .map(|de| de.path())
             .filter(|p| !p.is_dir())
             .filter(|p| {
-                let filen = p.file_name().unwrap().to_str().unwrap();
-                filen.starts_with("stats_")
+                let filen = p.file_name()
+                    .and_then(|osfilename| osfilename.to_str());
+
+                match filen {
+                    Some(filename) => filename.starts_with("stats_"),
+                    None => false
+                }
             })
             .max();
 
@@ -183,20 +190,19 @@ impl StatManager {
     }
 
     pub fn user_now_offline(&mut self, uid: UserId) -> bool {
-        if self.online_since.contains_key(&uid) {
-            let since = self.online_since.remove(&uid).unwrap();
+        match self.online_since.remove(&uid) {
+            Some(since) => {
+                let duration = Instant::now()
+                    .duration_since(since);
 
-            let duration = Instant::now()
-                .duration_since(since);
+                match self.online_time.get_mut(&uid) {
+                    Some(time) => { *time += duration; },
+                    None => { self.online_time.insert(uid, duration); },
+                }
 
-            match self.online_time.get_mut(&uid) {
-                Some(time) => { *time += duration; },
-                None       => { self.online_time.insert(uid, duration); },
-            }
-
-            true
-        } else {
-            false
+                true
+            },
+            None => false
         }
     }
 
@@ -233,7 +239,10 @@ impl StatManager {
             .output()?;
 
         if !output.status.success() {
-            println!("Error: stat-graphing failed with output:\n{}", String::from_utf8(output.stdout).unwrap());
+            match String::from_utf8(output.stdout) {
+                Ok(emsg) => eprintln!("E: stat-graphing failed with output:\n{}", emsg),
+                Err(e) => eprintln!("E: stat-graphing failed but could not decode output")
+            }
         }
 
         Ok(tmp_file_path)

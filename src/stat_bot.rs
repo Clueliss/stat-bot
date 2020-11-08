@@ -16,11 +16,16 @@ use std::time::Duration;
 use std::path::{PathBuf, Path};
 
 use serde::{Deserialize, Serialize};
+use chrono::format::{DelayedFormat, StrftimeItems};
 
 pub static DEFAULT_PREFIX: &str = ">>";
 static SETTINGS_CHOICES: [&str; 1] = ["prefix"];
 static SETTINGS_CHOICES_DESCR: [&str; 1] = [":exclamation: prefix"];
 
+enum UserState {
+    Online,
+    Offline
+}
 
 fn seconds_to_discord_formatted(s_total: u64) -> String {
     let d = s_total/86400;
@@ -29,6 +34,28 @@ fn seconds_to_discord_formatted(s_total: u64) -> String {
     let s = ((s_total - d * 86400) - h * 3600) - (m * 60);
 
     format!("*{}* ***D***, *{}* ***H***, *{}* ***M***, *{}* ***S***", d, h, m, s)
+}
+
+fn log_user_state_change(uid: &UserId, ctx: &Context, state: UserState) {
+
+    let now = Utc::now().format("%Y-%m-%d_%H:%M:%S");
+
+    match uid.to_user(ctx) {
+        Ok(user) => match state {
+            UserState::Online  => println!("<{now}> User joined: {name}", now=now, name=user.name),
+            UserState::Offline => println!("<{now}> User left: {name}", now=now, name=user.name),
+        },
+        Err(e) => match state {
+            UserState::Online => {
+                println!("<{now}> User joined: {uid}", now=now, uid=uid);
+                eprintln!("  ^- E: failed to receive username for: {:?}", uid);
+            },
+            UserState::Offline => {
+                println!("<{now}> User left: {uid}", now=now, uid=uid);
+                eprintln!("  ^- E: failed to receive username for: {:?}", uid);
+            },
+        },
+    }
 }
 
 
@@ -40,7 +67,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self{ prefix: DEFAULT_PREFIX.to_string(), output_dir: PathBuf::new() }
+        Self{ prefix: DEFAULT_PREFIX.to_string(), output_dir: PathBuf::from("./data") }
     }
 }
 
@@ -97,11 +124,12 @@ impl StatBot {
 
 
         } else {
-            let mut st = self.stat_man.lock().unwrap();
-            st.update_stats();
 
             msg.channel_id
                 .send_message(&ctx, |m| m.embed(|e| {
+
+                    let mut st = self.stat_man.lock().unwrap();
+                    st.update_stats();
 
                     e.title("Time Wasted");
 
@@ -115,9 +143,12 @@ impl StatBot {
                     };
 
                     for (uid, time) in sorted {
-                        let user = uid.to_user(ctx).unwrap();
+                        let time = seconds_to_discord_formatted(time.as_secs());
 
-                        e.field(user.name, seconds_to_discord_formatted(time.as_secs()), false);
+                        match uid.to_user(ctx) {
+                            Ok(user) => e.field(user.name, time, false),
+                            Err(err) => e.field(format!("{:?}", uid), time, false),
+                        };
                     }
 
                     e
@@ -206,21 +237,27 @@ impl EventHandler for StatBot {
     }
 
     fn ready(&self, ctx: Context, rdy: Ready) {
-        let mut st = self.stat_man.lock().unwrap();
         let tlof = rdy.guilds.get(0).unwrap();
-
         let channels: HashMap<ChannelId, GuildChannel> = tlof.id().channels(&ctx).unwrap();
+
+        let mut st = self.stat_man.lock().unwrap();
 
         for (_id, ch) in channels {
             match ch.kind {
                 ChannelType::Voice if !ch.name.starts_with("AFK") => {
-                    let members: Vec<Member> = ch.members(&ctx).unwrap();
 
-                    for m in members {
-                        let u: User = m.user_id().to_user(&ctx).unwrap();
+                    match ch.members(&ctx) {
+                        Ok(members) => {
+                            for m in members {
 
-                        if !u.bot {
-                            st.user_now_online(u.id);
+                                match m.user_id().to_user(&ctx) {
+                                    Ok(user) => if !user.bot { st.user_now_online(m.user_id()); },
+                                    Err(e) => { eprintln!("E: could not determine if user with id {:?} is bot, counting anyways {:?}", m.user_id(), e); }
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!("E: failed to enumerate members for channel {:?}", ch.name)
                         }
                     }
                 },
@@ -232,23 +269,20 @@ impl EventHandler for StatBot {
     }
 
     fn voice_state_update(&self, ctx: Context, _: Option<GuildId>, _old: Option<VoiceState>, new: VoiceState) {
-        let mut st = self.stat_man.lock().unwrap();
-
-        let date_time = Utc::now().format("%Y-%m-%d_%H:%M:%S");
 
         match new.channel_id {
             Some(id) if !id.name(&ctx).unwrap().starts_with("AFK") && !new.deaf && !new.self_deaf => {
-                let state_changed = st.user_now_online(new.user_id);
+                let state_changed = self.stat_man.lock().unwrap().user_now_online(new.user_id);
 
                 if state_changed {
-                    println!("<{}> User joined: {}", date_time, new.user_id.to_user(ctx).unwrap().name);
+                    log_user_state_change(&new.user_id, &ctx, UserState::Online);
                 }
             },
             _ => {
-                let state_changed = st.user_now_offline(new.user_id);
+                let state_changed = self.stat_man.lock().unwrap().user_now_offline(new.user_id);
 
                 if state_changed {
-                    println!("<{}> User left: {}", date_time, new.user_id.to_user(&ctx).unwrap().name);
+                    log_user_state_change(&new.user_id, &ctx, UserState::Offline);
                 }
             },
         }
