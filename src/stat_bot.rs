@@ -95,6 +95,7 @@ impl StatBot {
         }).collect();
 
         st.force_username_update(usernames);
+        println!("<{now}> Forced username update", now=Utc::now().format("%Y-%m-%d_%H:%M:%S"));
     }
 
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
