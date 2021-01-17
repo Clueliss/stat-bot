@@ -1,15 +1,13 @@
-use chrono::{Utc, Date};
-
-use serenity::model::id::UserId;
-
-use std::collections::BTreeMap;
-use std::time::{Instant, Duration};
-use std::num::ParseIntError;
-
-use std::path::{Path, PathBuf};
+use std::collections::btree_map::{BTreeMap, Entry};
 use std::fs::File;
 use std::io::Read;
+use std::num::ParseIntError;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, Instant};
+
+use chrono::{Date, Utc};
+use serenity::model::id::UserId;
 use tempfile::{Builder, TempPath};
 
 static DATE_FMT_STR: &str = "%Y-%m-%d";
@@ -87,7 +85,7 @@ impl StatManager {
 
     pub fn generate_translations(&self) -> BTreeMap<UserId, String> {
         self.online_time.iter()
-            .map(|(uid, (username, _))| (uid.clone(), username.clone()))
+            .map(|(uid, (username, _))| (*uid, username.clone()))
             .collect()
     }
 
@@ -99,7 +97,7 @@ impl StatManager {
             .map(|(uid, secs)| {
                 let parsed_uid = uid.parse::<u64>()?;
                 let username = trans.get(&parsed_uid).cloned().unwrap_or(format!("{:?}", UserId(parsed_uid)));
-                Ok((UserId::from(parsed_uid), (username.clone(), Duration::from_secs(secs))))
+                Ok((UserId::from(parsed_uid), (username, Duration::from_secs(secs))))
             })
             .collect()
     }
@@ -131,9 +129,8 @@ impl StatManager {
             Some(fp) => {
                 let stats = File::open(fp)?;
                 let trans = File::open(self.trans_file_path())?;
-                let newest_st = Self::get_stat_impl(stats, trans)?;
 
-                newest_st
+                Self::get_stat_impl(stats, trans)?
             },
             None => Default::default(),
         };
@@ -173,11 +170,11 @@ impl StatManager {
     pub fn update_stats(&mut self) {
         for (uid, timestamp) in self.online_since.iter_mut() {
             let duration = Instant::now()
-                .duration_since(timestamp.clone());
+                .duration_since(*timestamp);
 
             match self.online_time.get_mut(&uid) {
                 Some((_, t)) => { *t += duration; },
-                None    => { self.online_time.insert(uid.clone(), (unwrap_username(&uid, None), duration)); }
+                None    => { self.online_time.insert(*uid, (unwrap_username(&uid, None), duration)); }
             }
 
             *timestamp = Instant::now();
@@ -223,21 +220,19 @@ impl StatManager {
             None => { self.online_time.insert(uid, (new_username, Duration::from_secs(0))); }
         }
 
-        if !self.online_since.contains_key(&uid) {
-            match self.online_since.insert(uid, Instant::now()) {
-                None => true,
-                Some(_) => false,
-            }
-        } else {
-            false
+        match self.online_since.entry(uid) {
+            Entry::Vacant(entry) => {
+                entry.insert(Instant::now());
+                true
+            },
+            Entry::Occupied(_) => false
         }
     }
 
     pub fn force_username_update(&mut self, trans: BTreeMap<UserId, String>) {
         for (uid, new_name) in trans {
-            match self.online_time.get_mut(&uid) {
-                Some((old_name, _)) => *old_name = new_name,
-                None => (),
+            if let Some((old_name, _)) = self.online_time.get_mut(&uid) {
+                *old_name = new_name;
             }
         }
     }
@@ -248,7 +243,7 @@ impl StatManager {
             .tempfile()?
             .into_temp_path();
 
-        const ARGS: [&'static str; 11] = [
+        const ARGS: [&str; 11] = [
             "-x", "6",
             "-y", "10",
             "-n", "1080",

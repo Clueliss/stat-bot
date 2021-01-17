@@ -89,7 +89,7 @@ impl StatBot {
 
         let usernames: BTreeMap<UserId, String> = st.user_iter().filter_map(|uid| {
             match uid.to_user(ctx) {
-                Ok(user) => Some((uid.clone(), user.name)),
+                Ok(user) => Some((*uid, user.name)),
                 Err(_) => None,
             }
         }).collect();
@@ -99,7 +99,7 @@ impl StatBot {
     }
 
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
-        if args.len() > 0 {
+        if !args.is_empty() {
 
             enum E {
                 IOErr(std::io::Error),
@@ -146,7 +146,7 @@ impl StatBot {
 
                     let sorted = {
                         let mut buf: Vec<(UserId, (String, Duration))> = st.stats_iter()
-                            .map(|(uid, t)| (uid.clone(), t.clone()))
+                            .map(|(uid, t)| (*uid, t.clone()))
                             .collect();
 
                         buf.sort_by(|(_, (_, t1)), (_, (_, t2))| t2.cmp(t1));
@@ -177,7 +177,7 @@ impl StatBot {
                 .unwrap();
         };
 
-        if args.len() == 0 {
+        if args.is_empty() {
             msg.channel_id
                 .send_message(&ctx, |m| {
                     m.embed(|e| {
@@ -222,10 +222,10 @@ impl EventHandler for StatBot {
             let mut settings = self.settings.lock().unwrap();
 
             if msg.content.starts_with(&settings.prefix) {
-                let commandline = &msg.content[settings.prefix.len()..].split(" ")
+                let commandline = &msg.content[settings.prefix.len()..].split(' ')
                     .collect::<Vec<&str>>();
 
-                if commandline.len() == 0 {
+                if commandline.is_empty() {
                     msg.channel_id
                         .send_message(&ctx, |m| m.content("Error: expected command"))
                         .unwrap();
