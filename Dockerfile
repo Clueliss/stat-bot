@@ -1,27 +1,26 @@
-FROM docker.io/fedora
+FROM rustlang/rust:nightly-buster-slim AS builder
+RUN apt-get update
+RUN apt-get install pkg-config libssl-dev cmake make g++ libfreetype6-dev libexpat1-dev libfontconfig1-dev -y
+
+WORKDIR /usr/src/stat-bot
+COPY Cargo.toml ./
+COPY ./src ./src
+RUN cargo build --release
+
+
+FROM debian:buster-slim
 
 ENV STAT_BOT_DISCORD_TOKEN="YOUR TOKEN HERE"
-ENV PATH="/root/.cargo/bin:${PATH}"
-ENV QT_QPA_PLATFORM=offscreen
 
 VOLUME ["/data"]
 
-RUN dnf install rust cargo gcc g++ git openssl-devel cmake make qt5-qtbase-devel qt5-qtbase-gui -y
+RUN apt-get update
+RUN apt-get install libssl-dev ca-certificates libexpat1-dev libfreetype6 fonts-liberation2 libfontconfig1-dev -y
 
 RUN mkdir /tmp/stat-bot
 COPY . /tmp/stat-bot
 
-RUN cd /tmp/stat-bot && \
-    cargo build --release && \
-    rm /init || true > /dev/null && \
-    cp ./target/release/stat-bot /init && \
-    chmod +x /init
+COPY --from=builder /usr/src/stat-bot/target/release/stat-bot /usr/local/bin/
+RUN chmod +x /usr/local/bin/stat-bot
 
-RUN cd /tmp && git clone https://github.com/Clueliss/StatsGraphing
-RUN cd /tmp/StatsGraphing && \
-    qmake-qt5 && \
-    make && \
-    cp ./stat-graphing /usr/local/bin \
-    && chmod +x /usr/local/bin/stat-graphing
-
-CMD ["/init", "--settings-file", "/data/stat-bot.conf", "--graphing-tool-path", "/usr/local/bin/stat-graphing"]
+CMD ["/usr/local/bin/stat-bot", "--settings-file", "/data/stat-bot.conf"]

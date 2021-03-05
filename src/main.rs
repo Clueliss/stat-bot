@@ -6,7 +6,7 @@ extern crate signal_hook;
 
 mod stats;
 mod stat_bot;
-
+mod graphing;
 
 use clap::Clap;
 use serenity::client::Client;
@@ -20,9 +20,6 @@ use crate::stats::StatManager;
 struct Opts {
     #[clap(short = 's', long = "settings-file")]
     settings_file: String,
-
-    #[clap(short= 'g', long = "graphing-tool-path")]
-    graphing_tool_path: String,
 }
 
 fn main() {
@@ -34,7 +31,7 @@ fn main() {
         };
 
     let stat_man = Arc::new(Mutex::new({
-        let mut s = StatManager::new(&settings.output_dir, &opts.graphing_tool_path);
+        let mut s = StatManager::new(&settings.output_dir);
         s.read_stats()
             .expect("failed to read stats");
 

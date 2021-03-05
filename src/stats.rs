@@ -3,55 +3,42 @@ use std::fs::File;
 use std::io::Read;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 use chrono::{Date, Utc};
 use serenity::model::id::UserId;
-use tempfile::{Builder, TempPath};
+use thiserror::Error;
 
-static DATE_FMT_STR: &str = "%Y-%m-%d";
+const DATE_FMT_STR: &str = "%Y-%m-%d";
 
 fn unwrap_username(uid: &UserId, username: Option<String>) -> String {
     username.unwrap_or(format!("{:?}", uid))
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum StatParseError {
-    UserIdParseError(ParseIntError),
-    JsonParseError(serde_json::Error),
-    IOError(std::io::Error),
-}
-
-impl From<ParseIntError> for StatParseError {
-    fn from(e: ParseIntError) -> Self {
-        StatParseError::UserIdParseError(e)
-    }
-}
-
-impl From<serde_json::Error> for StatParseError {
-    fn from(e: serde_json::Error) -> Self {
-        StatParseError::JsonParseError(e)
-    }
-}
-
-impl From<std::io::Error> for StatParseError {
-    fn from(e: std::io::Error) -> Self {
-        StatParseError::IOError(e)
-    }
+    #[error("failed to parse user id")]
+    UserIdParseError(#[from] ParseIntError),
+    #[error("failed to parse json")]
+    JsonParseError(#[from] serde_json::Error),
+    #[error("io error")]
+    IOError(#[from] std::io::Error),
 }
 
 
 #[derive(Clone)]
 pub struct StatManager {
     output_dir: PathBuf,
-    graphing_tool_path: PathBuf,
     online_time: BTreeMap<UserId, (String, Duration)>,
     online_since: BTreeMap<UserId, Instant>
 }
 
 impl StatManager {
+    pub fn database_path(&self) -> &Path {
+        &self.output_dir
+    }
+
     fn stat_file_path(&self, date: Date<Utc>) -> PathBuf {
         self.output_dir
             .join(format!("stats_{}.json", date.format(DATE_FMT_STR)))
@@ -62,14 +49,12 @@ impl StatManager {
             .join("trans.json")
     }
 
-    pub fn new<OutDir, GraphingPath>(output_dir: OutDir, graphing_tool_path: GraphingPath) -> Self
+    pub fn new<OutDir>(output_dir: OutDir) -> Self
     where
         OutDir: AsRef<Path>,
-        GraphingPath: AsRef<Path>
     {
         Self {
             output_dir: output_dir.as_ref().to_path_buf(),
-            graphing_tool_path: graphing_tool_path.as_ref().to_path_buf(),
             online_time: Default::default(),
             online_since: Default::default()
         }
@@ -236,37 +221,4 @@ impl StatManager {
             }
         }
     }
-
-    pub fn generate_graph(&self, total: bool) -> std::io::Result<TempPath> {
-        let tmp_file_path = Builder::new()
-            .suffix(".png")
-            .tempfile()?
-            .into_temp_path();
-
-        const ARGS: [&str; 11] = [
-            "-x", "6",
-            "-y", "10",
-            "-n", "1080",
-            "-m", "1920",
-            "-s", "2020-05-11",
-            "-t"
-        ];
-
-        let output = Command::new(&self.graphing_tool_path)
-            .args(if total { &ARGS } else { &ARGS[..ARGS.len() - 1] })
-            .arg(&self.output_dir)
-            .arg(&tmp_file_path)
-            .output()?;
-
-        if !output.status.success() {
-            match String::from_utf8(output.stdout) {
-                Ok(emsg) => eprintln!("E: stat-graphing failed with output:\n{}", emsg),
-                Err(_) => eprintln!("E: stat-graphing failed but could not decode output")
-            }
-        }
-
-        Ok(tmp_file_path)
-    }
-
-
 }

@@ -14,10 +14,11 @@ use std::time::Duration;
 use std::path::{PathBuf, Path};
 
 use serde::{Deserialize, Serialize};
+use plotters::prelude::{IntoDrawingArea, BitMapBackend};
 
-pub static DEFAULT_PREFIX: &str = ">>";
-static SETTINGS_CHOICES: [&str; 1] = ["prefix"];
-static SETTINGS_CHOICES_DESCR: [&str; 1] = [":exclamation: prefix"];
+pub const DEFAULT_PREFIX: &str = ">>";
+const SETTINGS_CHOICES: [&str; 1] = ["prefix"];
+const SETTINGS_CHOICES_DESCR: [&str; 1] = [":exclamation: prefix"];
 
 enum UserState {
     Online,
@@ -102,33 +103,51 @@ impl StatBot {
         if !args.is_empty() {
 
             enum E {
-                IOErr(std::io::Error),
                 ArgErr,
+                StatReadErr(crate::graphing::StatReadError)
             }
 
-            let maybe_path = {
+            let temppath = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .unwrap()
+                .into_temp_path();
+
+            msg.channel_id.broadcast_typing(&ctx).unwrap();
+
+            let maybe_ok = {
                 let mut st = self.stat_man.lock().unwrap();
                 st.update_stats();
 
                 match &args {
-                    &["graph", "total"] | &["graph"] => st.generate_graph(true).map_err(E::IOErr),
-                    &["graph", "time-per-day"] => st.generate_graph(false).map_err(E::IOErr),
+                    &["graph", "total"] | &["graph"] => {
+                        let mut drawing_area = BitMapBackend::new(&temppath, (1280, 720))
+                            .into_drawing_area();
+
+                        crate::graphing::time_total_graph_from_dir(st.database_path(), &mut drawing_area)
+                            .map_err(|e| E::StatReadErr(e))
+                    },
+                    /*&["graph", "time-per-day"] => st.generate_graph(false).map_err(E::IOErr),*/
                     _ => Err(E::ArgErr)
                 }
             };
 
-            match maybe_path {
-                Ok(path) => {
+            match maybe_ok {
+                Ok(_) => {
                     msg.channel_id
-                        .send_files(&ctx, std::iter::once(path.to_str().unwrap()), |m| m)
+                        .send_files(&ctx, std::iter::once(temppath.to_str().unwrap()), |m| m)
                         .unwrap();
                 },
                 Err(E::ArgErr) => {
                     msg.channel_id
-                        .send_message(&ctx, |mb| mb.content(":x: Error: unknown subcommand"))
+                        .send_message(&ctx, |mb| mb.content(":x: Error: unknown subcommand, ('time-per-day' is not implemented yet, if you tried that) "))
                         .unwrap();
                 },
-                Err(E::IOErr(e)) => {
+                Err(E::StatReadErr(e)) => {
+                    msg.channel_id
+                        .send_message(&ctx, |mb| mb.content(":x: An error occured while trying to draw graph"))
+                        .unwrap();
+
                     println!("E: stat graphing failed {:?}", e);
                 }
             }
