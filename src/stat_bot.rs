@@ -1,20 +1,19 @@
-use serenity::model::channel::{Message, GuildChannel, ChannelType};
+use serenity::model::channel::{ChannelType, GuildChannel, Message};
 use serenity::model::gateway::Ready;
-use serenity::model::id::{GuildId, ChannelId, UserId};
+use serenity::model::id::{ChannelId, GuildId, UserId};
 use serenity::model::voice::VoiceState;
-use serenity::prelude::{EventHandler, Context};
+use serenity::prelude::{Context, EventHandler};
 
 use crate::stats::*;
 
-use std::collections::{HashMap, BTreeMap};
+use chrono::{Duration, Utc};
+use std::collections::HashMap;
 use std::fs::File;
-use std::sync::{Mutex, Arc};
-use chrono::Utc;
-use std::time::Duration;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, RwLock};
 
+use plotters::prelude::{BitMapBackend, IntoDrawingArea};
 use serde::{Deserialize, Serialize};
-use plotters::prelude::{IntoDrawingArea, BitMapBackend};
 
 pub const DEFAULT_PREFIX: &str = ">>";
 const SETTINGS_CHOICES: [&str; 1] = ["prefix"];
@@ -22,40 +21,41 @@ const SETTINGS_CHOICES_DESCR: [&str; 1] = [":exclamation: prefix"];
 
 enum UserState {
     Online,
-    Offline
+    Offline,
 }
 
-fn seconds_to_discord_formatted(s_total: u64) -> String {
-    let d = s_total/86400;
-    let h = (s_total - d * 86400)/3600;
-    let m = ((s_total - d * 86400) - h * 3600)/60;
+fn seconds_to_discord_formatted(s_total: i64) -> String {
+    let d = s_total / 86400;
+    let h = (s_total - d * 86400) / 3600;
+    let m = ((s_total - d * 86400) - h * 3600) / 60;
     let s = ((s_total - d * 86400) - h * 3600) - (m * 60);
 
-    format!("*{}* ***D***, *{}* ***H***, *{}* ***M***, *{}* ***S***", d, h, m, s)
+    format!(
+        "*{}* ***D***, *{}* ***H***, *{}* ***M***, *{}* ***S***",
+        d, h, m, s
+    )
 }
 
 fn log_user_state_change(uid: &UserId, username: Option<&String>, state: UserState) {
-
     let now = Utc::now().format("%Y-%m-%d_%H:%M:%S");
 
     match username {
         Some(name) => match state {
-            UserState::Online  => println!("<{now}> User joined: {name}", now=now, name=name),
-            UserState::Offline => println!("<{now}> User left: {name}", now=now, name=name),
+            UserState::Online => println!("<{now}> User joined: {name}", now = now, name = name),
+            UserState::Offline => println!("<{now}> User left: {name}", now = now, name = name),
         },
         None => match state {
             UserState::Online => {
-                println!("<{now}> User joined: {uid}", now=now, uid=uid);
+                println!("<{now}> User joined: {uid}", now = now, uid = uid);
                 eprintln!("  ^- E: failed to receive username for: {:?}", uid);
-            },
+            }
             UserState::Offline => {
-                println!("<{now}> User left: {uid}", now=now, uid=uid);
+                println!("<{now}> User left: {uid}", now = now, uid = uid);
                 eprintln!("  ^- E: failed to receive username for: {:?}", uid);
-            },
+            }
         },
     }
 }
-
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -65,19 +65,25 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self{ prefix: DEFAULT_PREFIX.to_string(), output_dir: PathBuf::from("./data") }
+        Self {
+            prefix: DEFAULT_PREFIX.to_string(),
+            output_dir: PathBuf::from("./data"),
+        }
     }
 }
-
 
 pub struct StatBot {
     settings: Mutex<Settings>,
     settings_path: PathBuf,
-    stat_man: Arc<Mutex<StatManager>>,
+    stat_man: Arc<RwLock<StatManager>>,
 }
 
 impl StatBot {
-    pub fn new<P: AsRef<Path>>(settings_path: P, settings: Settings, stat_man: Arc<Mutex<StatManager>>) -> Self {
+    pub fn new<P: AsRef<Path>>(
+        settings_path: P,
+        settings: Settings,
+        stat_man: Arc<RwLock<StatManager>>,
+    ) -> Self {
         Self {
             settings: Mutex::new(settings),
             settings_path: settings_path.as_ref().to_path_buf(),
@@ -85,26 +91,11 @@ impl StatBot {
         }
     }
 
-    fn force_username_update_subroutine(&self, ctx: &Context, _msg: &Message, _args: &[&str]) {
-        let mut st = self.stat_man.lock().unwrap();
-
-        let usernames: BTreeMap<UserId, String> = st.user_iter().filter_map(|uid| {
-            match uid.to_user(ctx) {
-                Ok(user) => Some((*uid, user.name)),
-                Err(_) => None,
-            }
-        }).collect();
-
-        st.force_username_update(usernames);
-        println!("<{now}> Forced username update", now=Utc::now().format("%Y-%m-%d_%H:%M:%S"));
-    }
-
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
         if !args.is_empty() {
-
             enum E {
                 ArgErr,
-                StatReadErr(crate::graphing::StatReadError)
+                DBMSError(diesel::result::Error),
             }
 
             let temppath = tempfile::Builder::new()
@@ -116,19 +107,30 @@ impl StatBot {
             msg.channel_id.broadcast_typing(&ctx).unwrap();
 
             let maybe_ok = {
-                let mut st = self.stat_man.lock().unwrap();
-                st.update_stats();
+                self.stat_man
+                    .write()
+                    .unwrap()
+                    .flush_stats()
+                    .expect("could not flush stats");
 
                 match &args {
                     &["graph", "total"] | &["graph"] => {
-                        let mut drawing_area = BitMapBackend::new(&temppath, (1280, 720))
-                            .into_drawing_area();
+                        let mut drawing_area =
+                            BitMapBackend::new(&temppath, (1280, 720)).into_drawing_area();
 
-                        crate::graphing::time_total_graph_from_dir(st.database_path(), &mut drawing_area)
-                            .map_err(|e| E::StatReadErr(e))
-                    },
+                        let iter = self.stat_man.read().unwrap().time_per_day_iter();
+
+                        match iter {
+                            Ok(iter) => {
+                                crate::graphing::time_total_graph(iter, ctx, &mut drawing_area);
+
+                                Ok(())
+                            }
+                            Err(e) => Err(E::DBMSError(e)),
+                        }
+                    }
                     /*&["graph", "time-per-day"] => st.generate_graph(false).map_err(E::IOErr),*/
-                    _ => Err(E::ArgErr)
+                    _ => Err(E::ArgErr),
                 }
             };
 
@@ -137,56 +139,71 @@ impl StatBot {
                     msg.channel_id
                         .send_files(&ctx, std::iter::once(temppath.to_str().unwrap()), |m| m)
                         .unwrap();
-                },
+                }
                 Err(E::ArgErr) => {
                     msg.channel_id
                         .send_message(&ctx, |mb| mb.content(":x: Error: unknown subcommand, ('time-per-day' is not implemented yet, if you tried that) "))
                         .unwrap();
-                },
-                Err(E::StatReadErr(e)) => {
+                }
+                Err(E::DBMSError(e)) => {
                     msg.channel_id
-                        .send_message(&ctx, |mb| mb.content(":x: An error occured while trying to draw graph"))
+                        .send_message(&ctx, |mb| {
+                            mb.content(":x: A database error occured while trying to draw graph")
+                        })
                         .unwrap();
 
                     println!("E: stat graphing failed {:?}", e);
                 }
             }
-
-
         } else {
-
             msg.channel_id
-                .send_message(&ctx, |m| m.embed(|e| {
+                .send_message(&ctx, |m| {
+                    m.embed(|e| {
+                        self.stat_man
+                            .write()
+                            .unwrap()
+                            .flush_stats()
+                            .expect("could not flush stats");
 
-                    let mut st = self.stat_man.lock().unwrap();
-                    st.update_stats();
+                        e.title("Time Wasted");
 
-                    e.title("Time Wasted");
+                        let sorted = {
+                            let mut buf: Vec<(UserId, Duration)> = self
+                                .stat_man
+                                .read()
+                                .unwrap()
+                                .absolute_time_iter()
+                                .unwrap()
+                                .collect();
 
-                    let sorted = {
-                        let mut buf: Vec<(UserId, (String, Duration))> = st.stats_iter()
-                            .map(|(uid, t)| (*uid, t.clone()))
-                            .collect();
+                            buf.sort_by(|(_, t1), (_, t2)| t1.cmp(t2));
+                            buf
+                        };
 
-                        buf.sort_by(|(_, (_, t1)), (_, (_, t2))| t2.cmp(t1));
-                        buf
-                    };
+                        for (uid, dur) in sorted {
+                            let secs = seconds_to_discord_formatted(dur.num_seconds());
+                            e.field(uid.to_user(ctx).unwrap().name, secs, false);
+                        }
 
-                    for (_, (username, dur)) in sorted {
-                        let secs = seconds_to_discord_formatted(dur.as_secs());
-                        e.field(username, secs, false);
-                    }
-
-                    e
-                })).unwrap();
+                        e
+                    })
+                })
+                .unwrap();
         }
     }
 
-    fn settings_subroutine(&self, settings: &mut Settings, ctx: &Context, msg: &Message, args: &[&str]) {
-
+    fn settings_subroutine(
+        &self,
+        settings: &mut Settings,
+        ctx: &Context,
+        msg: &Message,
+        args: &[&str],
+    ) {
         let reply_sucess = |mes: &str| {
             msg.channel_id
-                .send_message(&ctx, |mb| mb.content(format!(":white_check_mark: Success: {}", mes)))
+                .send_message(&ctx, |mb| {
+                    mb.content(format!(":white_check_mark: Success: {}", mes))
+                })
                 .unwrap();
         };
 
@@ -200,19 +217,25 @@ impl StatBot {
             msg.channel_id
                 .send_message(&ctx, |m| {
                     m.embed(|e| {
+                        e.title("StatBot Settings").description(format!(
+                            "Use the command format `{}settings <option>`",
+                            settings.prefix
+                        ));
 
-                        e.title("StatBot Settings")
-                            .description(format!("Use the command format `{}settings <option>`", settings.prefix));
-
-                        for (choice, descr) in SETTINGS_CHOICES.iter().zip(SETTINGS_CHOICES_DESCR.iter()) {
+                        for (choice, descr) in
+                            SETTINGS_CHOICES.iter().zip(SETTINGS_CHOICES_DESCR.iter())
+                        {
                             e.field(
                                 descr,
-                                format!("`{}settings {}`", settings.prefix, choice), true);
+                                format!("`{}settings {}`", settings.prefix, choice),
+                                true,
+                            );
                         }
 
                         e
                     })
-                }).unwrap();
+                })
+                .unwrap();
         } else {
             // prefix
             if args[0] == SETTINGS_CHOICES[0] {
@@ -241,7 +264,8 @@ impl EventHandler for StatBot {
             let mut settings = self.settings.lock().unwrap();
 
             if msg.content.starts_with(&settings.prefix) {
-                let commandline = &msg.content[settings.prefix.len()..].split(' ')
+                let commandline = &msg.content[settings.prefix.len()..]
+                    .split(' ')
                     .collect::<Vec<&str>>();
 
                 if commandline.is_empty() {
@@ -253,9 +277,15 @@ impl EventHandler for StatBot {
                     let args = &commandline[1..];
 
                     match cmd {
-                        "stats" => self.stats_subroutine(&ctx, &msg, &args[..]),
-                        "settings" => self.settings_subroutine(&mut settings, &ctx, &msg, &args[..]),
-                        "force-username-update" => self.force_username_update_subroutine(&ctx, &msg, &args[..]),
+                        "stats" => self.stats_subroutine(&ctx, &msg, args),
+                        "settings" => self.settings_subroutine(&mut settings, &ctx, &msg, args),
+                        "force-flush" => {
+                            self.stat_man
+                                .write()
+                                .unwrap()
+                                .flush_stats()
+                                .expect("dbms error could not flush");
+                        }
                         _ => (),
                     }
                 }
@@ -267,55 +297,68 @@ impl EventHandler for StatBot {
         let tlof = rdy.guilds.get(0).unwrap();
         let channels: HashMap<ChannelId, GuildChannel> = tlof.id().channels(&ctx).unwrap();
 
-        let mut st = self.stat_man.lock().unwrap();
-
         for (_id, ch) in channels {
             match ch.kind {
-                ChannelType::Voice if !ch.name.starts_with("AFK") => {
-
-                    match ch.members(&ctx) {
-                        Ok(members) => {
-                            for m in members {
-
-                                match m.user_id().to_user(&ctx) {
-                                    Ok(user) => if !user.bot { st.user_now_online(m.user_id(), Some(user.name)); },
-                                    Err(e) => { eprintln!("E: could not determine if user with id {:?} is bot, counting anyways {:?}", m.user_id(), e); }
+                ChannelType::Voice if !ch.name.starts_with("AFK") => match ch.members(&ctx) {
+                    Ok(members) => {
+                        for m in members {
+                            match m.user_id().to_user(&ctx) {
+                                Ok(user) => {
+                                    if !user.bot {
+                                        self.stat_man.write().unwrap().user_now_online(m.user_id());
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("E: could not determine if user with id {:?} is bot, counting anyways {:?}", m.user_id(), e);
                                 }
                             }
-                        },
-                        Err(_) => {
-                            eprintln!("E: failed to enumerate members for channel {:?}", ch.name)
                         }
+                    }
+                    Err(_) => {
+                        eprintln!("E: failed to enumerate members for channel {:?}", ch.name)
                     }
                 },
                 _ => (),
             }
         }
 
-        println!("<{}> scan complete, now online", Utc::now().format("%Y-%m-%d_%H:%M:%S"));
+        println!(
+            "<{}> scan complete, now online",
+            Utc::now().format("%Y-%m-%d_%H:%M:%S")
+        );
     }
 
-    fn voice_state_update(&self, ctx: Context, _: Option<GuildId>, _old: Option<VoiceState>, new: VoiceState) {
-
+    fn voice_state_update(
+        &self,
+        ctx: Context,
+        _: Option<GuildId>,
+        _old: Option<VoiceState>,
+        new: VoiceState,
+    ) {
         let username = new.user_id.to_user(&ctx).map(|u| u.name).ok();
 
         match new.channel_id {
-            Some(id) if !id.name(&ctx).unwrap().starts_with("AFK") && !new.deaf && !new.self_deaf => {
-                let state_changed = self.stat_man.lock().unwrap()
-                    .user_now_online(new.user_id, username.clone());
+            Some(id)
+                if !id.name(&ctx).unwrap().starts_with("AFK") && !new.deaf && !new.self_deaf =>
+            {
+                let state_changed = self.stat_man.write().unwrap().user_now_online(new.user_id);
 
                 if state_changed {
                     log_user_state_change(&new.user_id, username.as_ref(), UserState::Online);
                 }
-            },
+            }
             _ => {
-                let state_changed = self.stat_man.lock().unwrap()
-                    .user_now_offline(new.user_id, username.clone());
+                let state_changed = self
+                    .stat_man
+                    .write()
+                    .unwrap()
+                    .user_now_offline(new.user_id)
+                    .unwrap();
 
                 if state_changed {
                     log_user_state_change(&new.user_id, username.as_ref(), UserState::Offline);
                 }
-            },
+            }
         }
     }
 }

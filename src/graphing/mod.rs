@@ -1,19 +1,26 @@
-use std::path::Path;
+use chrono::{Date, Duration, Utc};
+use plotters::{
+    coord::Shift,
+    prelude::{DrawingArea, DrawingBackend},
+};
+use serenity::{client::Context, model::id::UserId};
 
-use plotters::coord::Shift;
-use plotters::prelude::{DrawingArea, DrawingBackend};
-pub use crate::graphing::stats::{StatResult, StatReadError};
+use self::util::min_max;
 
 mod draw;
-mod stats;
+mod util;
 
-pub fn time_total_graph_from_dir<I: AsRef<Path>, DB: DrawingBackend>(input_dir: I, canvas: &mut DrawingArea<DB, Shift>) -> StatResult<()> {
-    let trans_file_path = input_dir.as_ref().join("trans.json");
+pub fn time_total_graph<DB: DrawingBackend>(
+    stats: impl IntoIterator<Item = (UserId, Date<Utc>, Duration)>,
+    ctx: &Context,
+    canvas: &mut DrawingArea<DB, Shift>,
+) {
+    let times = stats.into_iter().collect::<Vec<_>>();
 
-    let dates = stats::available_datapoint_range(&input_dir)?;
-    let trans = stats::get_translations(&trans_file_path)?;
-    let st = stats::get_stats(&input_dir, dates.clone())?;
-    draw::time_total_graph(canvas, st, trans, dates);
+    let (&min_date, &max_date) = min_max(times.iter().map(|(_, date, _)| date)).unwrap();
+    let date_range = min_date..max_date + Duration::days(1);
 
-    Ok(())
+    let dates = util::group_by_users(times);
+
+    draw::time_total_graph(canvas, ctx, dates, date_range);
 }
