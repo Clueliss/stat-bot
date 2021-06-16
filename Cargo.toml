@@ -16,4 +16,4 @@ tempfile = "3.1.0"
 signal-hook = { version = "0.3.9", features = ["iterator"] }
 plotters = "0.3.1"
 diesel = { version = "1.4.7", features = ["postgres", "chrono"] }
-dotenv = "0.15.0"
+diesel_migrations = "1.4.0"

@@ -294,6 +294,11 @@ impl EventHandler for StatBot {
     }
 
     fn ready(&self, ctx: Context, rdy: Ready) {
+        println!(
+            "<{}> beginning scan",
+            Utc::now().format("%Y-%m-%d_%H:%M:%S")
+        );
+
         let tlof = rdy.guilds.get(0).unwrap();
         let channels: HashMap<ChannelId, GuildChannel> = tlof.id().channels(&ctx).unwrap();
 

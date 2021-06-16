@@ -1,9 +1,19 @@
 version: "3"
 services:
-    stat_bot:
-        container_name: stat_bot
-        build: .
+    postgres:
+        image: postgres
         environment:
-            - STAT_BOT_DISCORD_TOKEN=
+            - POSTGRES_DB=stat_bot_db
+            - POSTGRES_HOST_AUTH_METHOD=trust
         volumes:
-            - ./data:/data
+            - ./data:/var/lib/postgresql/data
+
+    stat_bot:
+        build: .
+        depends_on:
+            - postgres
+        environment:
+            - STAT_BOT_DISCORD_TOKEN=***REMOVED***
+            - DATABASE_URL=postgresql://postgres@localhost/stat_bot_db
+        volumes:
+            - ./config:/config

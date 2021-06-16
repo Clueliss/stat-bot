@@ -8,12 +8,16 @@ extern crate tempfile;
 #[macro_use]
 extern crate diesel;
 
+#[macro_use]
+extern crate diesel_migrations;
+
 mod graphing;
 mod model;
 mod schema;
 mod stat_bot;
 mod stats;
 
+use diesel::{Connection, PgConnection};
 use stats::StatManager;
 use clap::Clap;
 use serenity::client::Client;
@@ -25,6 +29,8 @@ use stat_bot::Settings;
 use std::fs::File;
 use std::sync::{Arc, RwLock};
 
+embed_migrations!("migrations");
+
 #[derive(Clap)]
 struct Opts {
     #[clap(short = 's', long = "settings-file")]
@@ -32,7 +38,6 @@ struct Opts {
 }
 
 fn main() {
-    dotenv::dotenv().ok();
     let opts: Opts = Opts::parse();
 
     let settings: Settings = match File::open(&opts.settings_file) {
@@ -42,6 +47,9 @@ fn main() {
 
     let tok = std::env::var("STAT_BOT_DISCORD_TOKEN").expect("failed to read token from env");
     let dburl = std::env::var("DATABASE_URL").expect("database url not found in env");
+
+    embedded_migrations::run(&PgConnection::establish(&dburl).expect("unable to establish db connection"))
+        .expect("unable to run migrations");
 
     let stat_man = Arc::new(RwLock::new(StatManager::new(&dburl)));
     let timer_stat_man = stat_man.clone();
