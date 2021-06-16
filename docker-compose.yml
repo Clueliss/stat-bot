@@ -13,7 +13,7 @@ services:
         depends_on:
             - postgres
         environment:
-            - STAT_BOT_DISCORD_TOKEN=***REMOVED***
+            - STAT_BOT_DISCORD_TOKEN=
             - DATABASE_URL=postgresql://postgres@localhost/stat_bot_db
         volumes:
             - ./config:/config
