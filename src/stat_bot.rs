@@ -1,3 +1,4 @@
+use diesel::QueryResult;
 use serenity::model::channel::{ChannelType, GuildChannel, Message};
 use serenity::model::gateway::Ready;
 use serenity::model::id::{ChannelId, GuildId, UserId};
@@ -6,11 +7,12 @@ use serenity::prelude::{Context, EventHandler};
 
 use crate::stats::*;
 
-use chrono::{Duration, Utc};
-use std::collections::HashMap;
+use chrono::{Date, Duration, Utc};
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 
 use plotters::prelude::{BitMapBackend, IntoDrawingArea};
 use serde::{Deserialize, Serialize};
@@ -91,6 +93,30 @@ impl StatBot {
         }
     }
 
+    fn data_for_time_total_graph(
+        stats: RwLockReadGuard<'_, StatManager>,
+    ) -> QueryResult<(
+        Range<Date<Utc>>,
+        BTreeMap<UserId, Vec<(Date<Utc>, Duration)>>,
+    )> {
+        let range = stats.date_range()?;
+        let stats = stats.absolute_sum_time_per_day_iter()?;
+
+        Ok((range, stats))
+    }
+
+    fn data_for_time_per_day_graph(
+        stats: RwLockReadGuard<'_, StatManager>,
+    ) -> QueryResult<(
+        Range<Date<Utc>>,
+        BTreeMap<UserId, Vec<(Date<Utc>, Duration)>>,
+    )> {
+        let range = stats.date_range()?;
+        let stats = stats.time_per_day_iter()?;
+
+        Ok((range, stats))
+    }
+
     fn stats_subroutine(&self, ctx: &Context, msg: &Message, args: &[&str]) {
         if !args.is_empty() {
             enum E {
@@ -113,23 +139,42 @@ impl StatBot {
                     .flush_stats()
                     .expect("could not flush stats");
 
+                let mut drawing_area =
+                    BitMapBackend::new(&temppath, (1280, 720)).into_drawing_area();
+
                 match &args {
                     &["graph", "total"] | &["graph"] => {
-                        let mut drawing_area =
-                            BitMapBackend::new(&temppath, (1280, 720)).into_drawing_area();
-
-                        let iter = self.stat_man.read().unwrap().time_per_day_iter();
-
-                        match iter {
-                            Ok(iter) => {
-                                crate::graphing::time_total_graph(iter, ctx, &mut drawing_area);
+                        match Self::data_for_time_total_graph(self.stat_man.read().unwrap()) {
+                            Ok((date_range, stats)) => {
+                                crate::graphing::draw_graph(
+                                    &mut drawing_area,
+                                    ctx,
+                                    "Time total",
+                                    date_range,
+                                    stats,
+                                );
 
                                 Ok(())
                             }
                             Err(e) => Err(E::DBMSError(e)),
                         }
                     }
-                    /*&["graph", "time-per-day"] => st.generate_graph(false).map_err(E::IOErr),*/
+                    &["graph", "time-per-day"] => {
+                        match Self::data_for_time_per_day_graph(self.stat_man.read().unwrap()) {
+                            Ok((date_range, stats)) => {
+                                crate::graphing::draw_graph(
+                                    &mut drawing_area,
+                                    ctx,
+                                    "Time per day",
+                                    date_range,
+                                    stats,
+                                );
+
+                                Ok(())
+                            }
+                            Err(e) => Err(E::DBMSError(e)),
+                        }
+                    }
                     _ => Err(E::ArgErr),
                 }
             };
@@ -172,7 +217,7 @@ impl StatBot {
                                 .stat_man
                                 .read()
                                 .unwrap()
-                                .absolute_time_iter()
+                                .absolute_sum_time_iter()
                                 .unwrap()
                                 .collect();
 

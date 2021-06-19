@@ -12,20 +12,21 @@ extern crate diesel;
 extern crate diesel_migrations;
 
 mod graphing;
+mod import;
 mod model;
 mod schema;
 mod stat_bot;
 mod stats;
 
-use diesel::{Connection, PgConnection};
-use stats::StatManager;
 use clap::Clap;
+use diesel::{Connection, PgConnection};
 use serenity::client::Client;
 use signal_hook::{
     consts::{SIGINT, SIGQUIT, SIGTERM},
     iterator::Signals,
 };
 use stat_bot::Settings;
+use stats::StatManager;
 use std::fs::File;
 use std::sync::{Arc, RwLock};
 
@@ -48,8 +49,10 @@ fn main() {
     let tok = std::env::var("STAT_BOT_DISCORD_TOKEN").expect("failed to read token from env");
     let dburl = std::env::var("DATABASE_URL").expect("database url not found in env");
 
-    embedded_migrations::run(&PgConnection::establish(&dburl).expect("unable to establish db connection"))
-        .expect("unable to run migrations");
+    embedded_migrations::run(
+        &PgConnection::establish(&dburl).expect("unable to establish db connection"),
+    )
+    .expect("unable to run migrations");
 
     let stat_man = Arc::new(RwLock::new(StatManager::new(&dburl)));
     let timer_stat_man = stat_man.clone();

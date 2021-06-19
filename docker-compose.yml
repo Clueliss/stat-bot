@@ -13,7 +13,7 @@ services:
         depends_on:
             - postgres
         environment:
-            - STAT_BOT_DISCORD_TOKEN=
+            - STAT_BOT_DISCORD_TOKEN=${TOKEN}
             - DATABASE_URL=postgresql://postgres@localhost/stat_bot_db
         volumes:
             - ./config:/config

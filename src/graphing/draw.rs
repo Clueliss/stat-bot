@@ -5,18 +5,20 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-pub fn time_total_graph<DB: DrawingBackend>(
-    canvas: &mut DrawingArea<DB, Shift>,
+pub fn draw_time_graph<DB: DrawingBackend>(
+    drawing_area: &mut DrawingArea<DB, Shift>,
     ctx: &Context,
-    stats: BTreeMap<UserId, Vec<(Date<Utc>, Duration)>>,
+    caption: impl AsRef<str>,
     date_range: Range<Date<Utc>>,
+    max_time: Duration,
+    stats: BTreeMap<UserId, Vec<(Date<Utc>, Duration)>>,
 ) {
-    let max_time = super::util::max_time(&stats).unwrap_or(0);
+    let max_time = max_time.num_seconds();
 
-    canvas.fill(&WHITE).unwrap();
+    drawing_area.fill(&WHITE).unwrap();
 
-    let mut chart = ChartBuilder::on(canvas)
-        .caption("Time total", (FontFamily::SansSerif, 50))
+    let mut chart = ChartBuilder::on(drawing_area)
+        .caption(caption, (FontFamily::SansSerif, 50))
         .margin_left(30)
         .margin_right(30)
         .x_label_area_size(30)
