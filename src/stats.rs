@@ -31,7 +31,7 @@ impl StatManager {
         let conn = self.make_conn().unwrap();
 
         let (min, max) = online_time_log
-            .select((sql("MIN(online_time_start)"), sql("MAX(online_time_end)")))
+            .select((sql("MIN(day)"), sql("MAX(day)")))
             .first::<(NaiveDate, NaiveDate)>(&conn)?;
 
         Ok(Date::from_utc(min, Utc)..Date::from_utc(max, Utc) + Duration::days(1))
@@ -56,24 +56,22 @@ impl StatManager {
 
     fn collect_db_results(
         data: Vec<(String, NaiveDate, PgInterval)>,
-    ) -> BTreeMap<UserId, Vec<(Date<Utc>, Duration)>> {
-        let mut buf: BTreeMap<UserId, Vec<(Date<Utc>, Duration)>> = BTreeMap::new();
+    ) -> BTreeMap<UserId, BTreeMap<Date<Utc>, Duration>> {
+        let mut buf: BTreeMap<UserId, BTreeMap<Date<Utc>, Duration>> = BTreeMap::new();
 
         for (uid, day, dur) in data {
-            let val = (
-                Date::from_utc(day, Utc),
-                Duration::microseconds(dur.microseconds),
-            );
-
             buf.entry(UserId::from_str(&uid).unwrap())
-                .or_insert(Vec::new())
-                .push(val);
+                .or_insert(Default::default())
+                .insert(
+                    Date::from_utc(day, Utc),
+                    Duration::microseconds(dur.microseconds),
+                );
         }
 
         buf
     }
 
-    pub fn time_per_day_iter(&self) -> QueryResult<BTreeMap<UserId, Vec<(Date<Utc>, Duration)>>> {
+    pub fn time_per_day(&self) -> QueryResult<BTreeMap<UserId, BTreeMap<Date<Utc>, Duration>>> {
         use crate::schema::online_time_log::dsl as ot;
 
         let results = {
@@ -92,9 +90,9 @@ impl StatManager {
         Ok(Self::collect_db_results(results))
     }
 
-    pub fn absolute_sum_time_per_day_iter(
+    pub fn absolute_sum_time_per_day(
         &self,
-    ) -> QueryResult<BTreeMap<UserId, Vec<(Date<Utc>, Duration)>>> {
+    ) -> QueryResult<BTreeMap<UserId, BTreeMap<Date<Utc>, Duration>>> {
         use crate::schema::online_time_log::dsl as ot;
 
         /*let q = sql_query("
@@ -231,8 +229,18 @@ fn split_by_days(
 #[cfg(test)]
 mod test {
     use super::split_by_days;
+    use super::StatManager;
     use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
     use diesel::{debug_query, pg::Pg};
+
+    #[test]
+    fn print_time_per_day() {
+        dotenv::dotenv().ok();
+        let st = StatManager::new(std::env::var("DATABASE_URL").unwrap());
+        let data = st.time_per_day().unwrap();
+
+        println!("{:#?}", data);
+    }
 
     #[test]
     fn query_test() {

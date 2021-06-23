@@ -1,11 +1,11 @@
-use std::collections::btree_map::{BTreeMap, Entry};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 use std::num::ParseIntError;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 
-use chrono::{Date, Duration, NaiveDate, NaiveTime, Utc};
+use chrono::{Duration, NaiveDate, NaiveTime};
 use diesel::{Connection, PgConnection, RunQueryDsl};
 use serenity::model::id::UserId;
 use thiserror::Error;
@@ -41,10 +41,12 @@ pub fn read_stats(stat_dir: impl AsRef<Path>) -> BTreeMap<NaiveDate, BTreeMap<Us
 
         let filename = path.file_name().unwrap().to_str().unwrap();
 
-        if filename.starts_with("stats_") && path.extension().map(|ex| ex == "json").unwrap_or(false) {
+        if filename.starts_with("stats_")
+            && path.extension().map(|ex| ex == "json").unwrap_or(false)
+        {
             let date = NaiveDate::from_str(&filename[6..][..10]).unwrap();
             let stats = get_stat_impl(File::open(path).unwrap()).unwrap();
-            
+
             collection.insert(date, stats);
         }
     }
@@ -86,12 +88,13 @@ fn run_import() {
 }
 
 fn import(db_url: &str, stat_dir: impl AsRef<Path>) {
-    use crate::schema::online_time_log::dsl as ot;
     use crate::model::NewLogEntryOwned;
+    use crate::schema::online_time_log::dsl as ot;
 
     let stats = read_stats(stat_dir);
 
-    let stats = stats.into_iter()
+    let stats = stats
+        .into_iter()
         .flat_map(|(date, stat)| std::iter::repeat(date).zip(stat.into_iter()))
         .filter(|(_, (_, dur))| *dur > Duration::zero())
         .map(|(day, (uid, dur))| NewLogEntryOwned {

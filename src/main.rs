@@ -1,4 +1,5 @@
 #![feature(slice_group_by)]
+#![feature(map_first_last)]
 
 extern crate chrono;
 extern crate serenity;

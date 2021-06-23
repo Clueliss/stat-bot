@@ -97,10 +97,10 @@ impl StatBot {
         stats: RwLockReadGuard<'_, StatManager>,
     ) -> QueryResult<(
         Range<Date<Utc>>,
-        BTreeMap<UserId, Vec<(Date<Utc>, Duration)>>,
+        BTreeMap<UserId, BTreeMap<Date<Utc>, Duration>>,
     )> {
         let range = stats.date_range()?;
-        let stats = stats.absolute_sum_time_per_day_iter()?;
+        let stats = stats.absolute_sum_time_per_day()?;
 
         Ok((range, stats))
     }
@@ -109,10 +109,10 @@ impl StatBot {
         stats: RwLockReadGuard<'_, StatManager>,
     ) -> QueryResult<(
         Range<Date<Utc>>,
-        BTreeMap<UserId, Vec<(Date<Utc>, Duration)>>,
+        BTreeMap<UserId, BTreeMap<Date<Utc>, Duration>>,
     )> {
         let range = stats.date_range()?;
-        let stats = stats.time_per_day_iter()?;
+        let stats = stats.time_per_day()?;
 
         Ok((range, stats))
     }
@@ -146,7 +146,7 @@ impl StatBot {
                     &["graph", "total"] | &["graph"] => {
                         match Self::data_for_time_total_graph(self.stat_man.read().unwrap()) {
                             Ok((date_range, stats)) => {
-                                crate::graphing::draw_graph(
+                                crate::graphing::draw_time_total_graph(
                                     &mut drawing_area,
                                     ctx,
                                     "Time total",
@@ -162,7 +162,7 @@ impl StatBot {
                     &["graph", "time-per-day"] => {
                         match Self::data_for_time_per_day_graph(self.stat_man.read().unwrap()) {
                             Ok((date_range, stats)) => {
-                                crate::graphing::draw_graph(
+                                crate::graphing::draw_time_per_day_graph(
                                     &mut drawing_area,
                                     ctx,
                                     "Time per day",
